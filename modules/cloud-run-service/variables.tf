@@ -87,12 +87,12 @@ variable "resources" {
     cpu_idle          = optional(bool, true)
     startup_cpu_boost = optional(bool, true)
   })
-  description = "Container resource limits and CPU behavior. CPU is restricted to supported whole-vCPU Cloud Run service configurations; memory must use Mi or Gi."
+  description = "Container resource limits and CPU behavior. CPU is restricted to whole-vCPU Cloud Run service configurations that do not require Gen2-specific 6/8 vCPU support; memory must use Mi or Gi."
   default     = {}
 
   validation {
-    condition     = contains(["1", "2", "4", "6", "8"], var.resources.cpu)
-    error_message = "resources.cpu must be one of the supported whole-vCPU values: \"1\", \"2\", \"4\", \"6\", or \"8\". Fractional CPU is intentionally not supported by this module."
+    condition     = contains(["1", "2", "4"], var.resources.cpu)
+    error_message = "resources.cpu must be one of \"1\", \"2\", or \"4\". Fractional CPU and Gen2-only 6/8 vCPU configurations are intentionally outside this module's current contract."
   }
 
   validation {
@@ -109,8 +109,8 @@ variable "resources" {
       endswith(var.resources.memory, "Gi")
       ? tonumber(trimsuffix(var.resources.memory, "Gi")) * 1024
       : tonumber(trimsuffix(var.resources.memory, "Mi"))
-    ) <= 32768
-    error_message = "resources.memory must be between 512Mi and 32Gi for the Cloud Run execution model used by this module."
+    ) <= 16384
+    error_message = "resources.memory must be between 512Mi and 16Gi for the CPU configurations supported by this module."
   }
 
   validation {
@@ -136,33 +136,9 @@ variable "resources" {
           ? tonumber(trimsuffix(var.resources.memory, "Gi")) * 1024
           : tonumber(trimsuffix(var.resources.memory, "Mi"))
         ) <= 16384
-      ) :
-      var.resources.cpu == "6" ? (
-        (
-          endswith(var.resources.memory, "Gi")
-          ? tonumber(trimsuffix(var.resources.memory, "Gi")) * 1024
-          : tonumber(trimsuffix(var.resources.memory, "Mi"))
-        ) >= 4096 &&
-        (
-          endswith(var.resources.memory, "Gi")
-          ? tonumber(trimsuffix(var.resources.memory, "Gi")) * 1024
-          : tonumber(trimsuffix(var.resources.memory, "Mi"))
-        ) <= 24576
-      ) :
-      var.resources.cpu == "8" ? (
-        (
-          endswith(var.resources.memory, "Gi")
-          ? tonumber(trimsuffix(var.resources.memory, "Gi")) * 1024
-          : tonumber(trimsuffix(var.resources.memory, "Mi"))
-        ) >= 4096 &&
-        (
-          endswith(var.resources.memory, "Gi")
-          ? tonumber(trimsuffix(var.resources.memory, "Gi")) * 1024
-          : tonumber(trimsuffix(var.resources.memory, "Mi"))
-        ) <= 32768
       ) : false
     )
-    error_message = "resources.memory is incompatible with resources.cpu. Supported maxima are 4Gi for 1 vCPU and 8Gi for 2 vCPU; 4 vCPU requires 2-16Gi; 6 vCPU requires 4-24Gi; 8 vCPU requires 4-32Gi."
+    error_message = "resources.memory is incompatible with resources.cpu. Supported maxima are 4Gi for 1 vCPU and 8Gi for 2 vCPU; 4 vCPU requires 2-16Gi."
   }
 }
 
