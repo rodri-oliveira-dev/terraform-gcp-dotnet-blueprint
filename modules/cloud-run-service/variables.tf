@@ -105,7 +105,7 @@ variable "resources" {
       endswith(var.resources.memory, "Gi")
       ? tonumber(trimsuffix(var.resources.memory, "Gi")) * 1024
       : tonumber(trimsuffix(var.resources.memory, "Mi"))
-    ) >= 512 && (
+      ) >= 512 && (
       endswith(var.resources.memory, "Gi")
       ? tonumber(trimsuffix(var.resources.memory, "Gi")) * 1024
       : tonumber(trimsuffix(var.resources.memory, "Mi"))
