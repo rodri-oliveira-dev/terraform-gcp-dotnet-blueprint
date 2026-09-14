@@ -1,17 +1,18 @@
 # Terraform CI
 
-The repository validates Terraform changes in GitHub Actions before merge. The workflow is intentionally credential-free at this stage: it performs static quality and security checks without authenticating to Google Cloud.
+The repository validates Terraform changes in GitHub Actions before merge. The workflow is intentionally credential-free: static validation and unit tests do not authenticate to Google Cloud.
 
 ## Workflow
 
 `.github/workflows/terraform-ci.yml` runs for pull requests and pushes to `main` with read-only repository permissions.
 
-The workflow contains four independent quality gates:
+The workflow contains five independent quality gates:
 
 1. **Terraform format** — runs `terraform fmt -check -recursive -diff` and fails when committed HCL is not formatted.
 2. **Terraform validate** — discovers deployable roots under `bootstrap/`, `environments/`, and `examples/`, plus reusable child modules under `modules/`. Roots are initialized with `-backend=false`, require a committed `.terraform.lock.hcl`, and are validated with their locked providers. Reusable modules are initialized and validated independently without requiring a root lock file.
-3. **TFLint** — installs the version pinned in `.tflint-version`, initializes the repository configuration, and runs recursively with the Terraform recommended rules and the pinned Google Cloud ruleset from `.tflint.hcl`.
-4. **IaC security scan** — runs Trivy configuration scanning and fails on HIGH or CRITICAL findings.
+3. **Terraform test** — discovers reusable modules that contain `tests/*.tftest.hcl`, initializes them without a backend, and runs `terraform test`. Unit tests should prefer plan mode and mocked providers so pull requests do not create infrastructure or require cloud credentials.
+4. **TFLint** — installs the version pinned in `.tflint-version`, initializes the repository configuration, and runs recursively with the Terraform recommended rules and the pinned Google Cloud ruleset from `.tflint.hcl`.
+5. **IaC security scan** — runs Trivy configuration scanning and fails on HIGH or CRITICAL findings.
 
 Each gate is a separate job so failures are easy to identify in pull-request checks.
 
@@ -29,16 +30,18 @@ Reusable child modules are discovered as direct child directories of `modules/` 
 
 Reusable modules do not own backends or root dependency lock files. CI therefore initializes them with `terraform init -backend=false` and runs `terraform validate` without imposing the root lock-file requirement.
 
+Modules with native Terraform tests under their `tests/` directory are also executed by the `Terraform test` job. The test job remains credential-free; tests that require live infrastructure must be placed in a separately controlled integration workflow rather than silently introduced into pull-request CI.
+
 ## Security and credentials
 
-The workflow uses only:
+The Terraform CI workflow uses only:
 
 ```yaml
 permissions:
   contents: read
 ```
 
-It does not request `id-token: write`, does not consume Google Cloud credentials, and does not use service-account keys. Google Cloud authentication is introduced separately by the Workload Identity Federation roadmap item.
+It does not request `id-token: write`, does not consume Google Cloud credentials, and does not use service-account keys. Google Cloud authentication is isolated in workflows that explicitly need it, such as the WIF smoke test.
 
 Third-party GitHub Actions are pinned to immutable commit SHAs, with the corresponding release version documented as an inline comment in the workflow.
 
@@ -86,6 +89,17 @@ terraform -chdir=modules/cloud-run-service validate
 ```
 
 Reusable modules intentionally do not require a committed `.terraform.lock.hcl`; provider selections are locked by the root modules that consume them.
+
+### Native Terraform tests
+
+For a module containing `tests/*.tftest.hcl`:
+
+```bash
+terraform -chdir=modules/cloud-run-service init -backend=false -input=false
+terraform -chdir=modules/cloud-run-service test
+```
+
+Pull-request unit tests should use `command = plan` and mock providers whenever the Google Cloud API is not part of the behavior being tested.
 
 ### TFLint
 
