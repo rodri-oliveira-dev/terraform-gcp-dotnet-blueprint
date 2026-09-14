@@ -1,0 +1,4 @@
+interface:
+  display_name: "GitHub Actions Hardening"
+  short_description: "Secure workflows, permissions, OIDC, and action pins"
+  default_prompt: "Use the GitHub Actions hardening skill to author or review workflows with safe triggers, least-privilege permissions, OIDC, immutable dependencies, and untrusted-input protections."
