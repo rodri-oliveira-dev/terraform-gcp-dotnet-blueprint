@@ -27,6 +27,8 @@ For GitHub Actions, prefer Workload Identity Federation over service-account JSO
 - Prefer stable and authoritative identity claims.
 - Grant the federated principal or impersonated service account only the roles required by the workflow.
 
+This repository was created after GitHub's July 15, 2026 rollout of immutable default OIDC subjects for new repositories. When issue #4 configures Google Cloud trust, inspect the actual OIDC subject format and prefer conditions that preserve the immutable owner/repository identifiers rather than weakening trust back to reusable names only. Do not copy legacy `repo:owner/name:*` examples without validating the claims emitted for this repository.
+
 Do not create long-lived service-account keys as a convenience workaround.
 
 ## IAM semantics
@@ -58,7 +60,7 @@ Never run `terraform apply`, `destroy`, force-unlock, state removal, or destruct
 
 - Is remote state protected and isolated appropriately?
 - Are there any credential files or key-based CI authentication paths?
-- Is federation restricted to trusted GitHub identities?
+- Is federation restricted to trusted GitHub identities using the repository's actual immutable OIDC claims where available?
 - Are IAM changes additive unless authoritative ownership is intentional?
 - Are secret payloads absent from Terraform source and outputs?
 - Is public access disabled unless explicitly required?
@@ -71,3 +73,4 @@ Never run `terraform apply`, `destroy`, force-unlock, state removal, or destruct
 - https://cloud.google.com/docs/terraform/best-practices/working-with-resources
 - https://cloud.google.com/iam/docs/best-practices-for-using-workload-identity-federation
 - https://cloud.google.com/iam/docs/workload-identity-federation-with-deployment-pipelines
+- https://docs.github.com/en/actions/reference/security/oidc
