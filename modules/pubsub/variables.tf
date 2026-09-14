@@ -117,10 +117,10 @@ variable "retry_policy" {
 
 variable "dead_letter" {
   type = object({
-    enabled                       = optional(bool, true)
-    topic_name                    = optional(string, null)
-    subscription_name             = optional(string, null)
-    max_delivery_attempts         = optional(number, 10)
+    enabled                        = optional(bool, true)
+    topic_name                     = optional(string, null)
+    subscription_name              = optional(string, null)
+    max_delivery_attempts          = optional(number, 10)
     create_inspection_subscription = optional(bool, true)
   })
   description = "Dead-letter topic, inspection subscription, and maximum delivery-attempt configuration."
