@@ -2,7 +2,7 @@
 
 Production-oriented Terraform blueprint for running .NET workloads on Google Cloud, with reusable modules, secure defaults, CI/CD, IAM, secrets, messaging, caching, observability, and multi-environment infrastructure patterns.
 
-> **Status:** Foundation in progress.
+> **Status:** Infrastructure implementation in progress.
 
 ## Goals
 
@@ -99,6 +99,16 @@ The repository includes project-specific instructions and Agent Skills so Codex 
 
 Agents must revalidate prerequisite DoD items rather than assuming work from a previous prompt or chat is correct.
 
+## Remote state bootstrap
+
+`bootstrap/state` is an independent Terraform root that creates the Cloud Storage bucket used by later workload roots as their GCS backend.
+
+The bucket is secure by default: object versioning is enabled, uniform bucket-level access is enabled, public access prevention is enforced, `force_destroy` is disabled, and Terraform lifecycle protection prevents accidental destruction.
+
+Bootstrap remains local by design so the repository does not introduce a circular dependency where Terraform needs a remote backend before it can create that backend.
+
+See [`bootstrap/state/README.md`](bootstrap/state/README.md) for prerequisites, initialization, manual apply, backend configuration, migration from local state, recovery guidance, and environment-specific state prefixes.
+
 ## Roadmap
 
 The implementation will evolve incrementally:
@@ -115,7 +125,7 @@ The implementation will evolve incrementally:
 ## Current toolchain
 
 - Terraform CLI: pinned through `.terraform-version`.
-- Google provider: version constraints will be declared by each Terraform root/module as appropriate.
+- Google provider: version constraints are declared by each Terraform root/module as appropriate; `bootstrap/state` currently targets Google provider 8.x.
 - TFLint: Terraform recommended rules plus the Google Cloud ruleset.
 
 ## License
