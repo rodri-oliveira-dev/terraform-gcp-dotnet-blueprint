@@ -102,6 +102,18 @@ Object versioning is enabled so previous object generations remain available if 
 
 Because the bucket has `prevent_destroy` and `force_destroy = false`, intentional removal requires an explicit code change before Terraform can destroy it. This is deliberate protection for infrastructure state.
 
+## Validation
+
+The expected local validation sequence for this root is:
+
+```bash
+terraform fmt -check
+terraform init
+terraform validate
+```
+
+Repository CI for these checks is introduced by roadmap issue #3. Until then, contributors should run the commands locally and report any validation they could not execute in the pull request.
+
 ## Outputs
 
 | Output | Description |
