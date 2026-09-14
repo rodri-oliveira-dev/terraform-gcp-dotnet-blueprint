@@ -50,6 +50,36 @@ run "reject_unsupported_cpu" {
   ]
 }
 
+run "reject_gen2_only_cpu_6" {
+  command = plan
+
+  variables {
+    resources = {
+      cpu    = "6"
+      memory = "4Gi"
+    }
+  }
+
+  expect_failures = [
+    var.resources,
+  ]
+}
+
+run "reject_gen2_only_cpu_8" {
+  command = plan
+
+  variables {
+    resources = {
+      cpu    = "8"
+      memory = "4Gi"
+    }
+  }
+
+  expect_failures = [
+    var.resources,
+  ]
+}
+
 run "reject_memory_below_platform_minimum" {
   command = plan
 
@@ -65,13 +95,13 @@ run "reject_memory_below_platform_minimum" {
   ]
 }
 
-run "reject_memory_above_platform_maximum" {
+run "reject_memory_above_supported_maximum" {
   command = plan
 
   variables {
     resources = {
-      cpu    = "8"
-      memory = "64Gi"
+      cpu    = "4"
+      memory = "32Gi"
     }
   }
 
