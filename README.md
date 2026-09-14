@@ -52,6 +52,7 @@ Pub/Sub messages are consumed by a request-serving Cloud Run service. Cloud Run 
 ├── .agents/
 │   └── skills/
 ├── .github/
+│   ├── dependabot.yml
 │   └── workflows/
 ├── bootstrap/
 │   └── state/
