@@ -1,0 +1,4 @@
+interface:
+  display_name: "GCP Terraform Security"
+  short_description: "Harden Terraform state, IAM, secrets, and WIF"
+  default_prompt: "Use $gcp-terraform-security to review state, IAM, secrets, public access, and GitHub-to-GCP Workload Identity Federation before implementing the change."

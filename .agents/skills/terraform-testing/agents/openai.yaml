@@ -1,0 +1,4 @@
+interface:
+  display_name: "Terraform Testing"
+  short_description: "Build safe native Terraform tests"
+  default_prompt: "Use $terraform-testing to add or review native tests, preferring plan-mode assertions and mocks before live integration tests."

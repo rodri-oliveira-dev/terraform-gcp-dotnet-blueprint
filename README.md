@@ -49,12 +49,16 @@ Pub/Sub messages are consumed by a request-serving Cloud Run service. Cloud Run 
 
 ```text
 .
+├── .agents/
+│   └── skills/
 ├── .github/
 │   └── workflows/
 ├── bootstrap/
 │   └── state/
 ├── docs/
 │   ├── architecture.md
+│   ├── agent-skills.md
+│   ├── agent-workflow.md
 │   └── adr/
 ├── environments/
 │   ├── dev/
@@ -68,6 +72,7 @@ Pub/Sub messages are consumed by a request-serving Cloud Run service. Cloud Run 
 │   └── secret-manager/
 ├── examples/
 │   └── minimal/
+├── AGENTS.md
 ├── .terraform-version
 ├── .tflint.hcl
 └── README.md
@@ -82,6 +87,17 @@ Pub/Sub messages are consumed by a request-serving Cloud Run service. Cloud Run 
 5. **Automated quality gates** — formatting, validation, linting and security checks run before changes are merged.
 6. **Documented decisions** — relevant trade-offs are captured as Architecture Decision Records.
 7. **Production-oriented, not production-prescriptive** — the repository demonstrates patterns that should be adapted to each workload and organization.
+
+## Agent-assisted development
+
+The repository includes project-specific instructions and Agent Skills so Codex can execute issue work consistently across separate chat sessions.
+
+- [`AGENTS.md`](AGENTS.md) is the concise repository instruction map.
+- [`docs/agent-workflow.md`](docs/agent-workflow.md) defines the issue, validation, safety, and pull-request workflow.
+- [`docs/agent-skills.md`](docs/agent-skills.md) documents the selected skill stack and its sources.
+- [`.agents/skills/`](.agents/skills/) contains focused skills for Terraform style, module engineering, testing, GCP security, and GitHub Actions hardening.
+
+Agents must revalidate prerequisite DoD items rather than assuming work from a previous prompt or chat is correct.
 
 ## Roadmap
 

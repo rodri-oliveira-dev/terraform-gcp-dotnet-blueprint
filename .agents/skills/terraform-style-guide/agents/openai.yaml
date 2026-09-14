@@ -1,0 +1,4 @@
+interface:
+  display_name: "Terraform Style Guide"
+  short_description: "Apply repository Terraform HCL conventions"
+  default_prompt: "Use $terraform-style-guide to write or review HCL in this repository, then run the applicable formatting and validation checks."

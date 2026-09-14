@@ -1,0 +1,4 @@
+interface:
+  display_name: "Terraform Module Engineering"
+  short_description: "Design reusable modules and root composition"
+  default_prompt: "Use $terraform-module-engineering to design or review Terraform module boundaries, typed interfaces, root-module responsibilities, and safe composition."
