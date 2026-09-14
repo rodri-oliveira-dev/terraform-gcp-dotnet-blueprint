@@ -54,7 +54,7 @@ jobs:
         uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
         with:
           project_id: ${{ env.GCP_PROJECT_ID }}
-          version: ">= 363.0.0"
+          version: "584.0.0"
 
       - name: Verify federated credentials
         shell: bash
