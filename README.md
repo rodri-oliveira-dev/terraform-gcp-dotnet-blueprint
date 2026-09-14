@@ -55,6 +55,7 @@ Pub/Sub messages are consumed by a request-serving Cloud Run service. Cloud Run 
 │   ├── dependabot.yml
 │   └── workflows/
 ├── bootstrap/
+│   ├── github-actions-wif/
 │   └── state/
 ├── docs/
 │   ├── architecture.md
@@ -110,6 +111,16 @@ Bootstrap remains local by design so the repository does not introduce a circula
 
 See [`bootstrap/state/README.md`](bootstrap/state/README.md) for prerequisites, initialization, manual apply, backend configuration, migration from local state, recovery guidance, and environment-specific state prefixes.
 
+## GitHub Actions identity foundation
+
+`bootstrap/github-actions-wif` provisions the Google Cloud side of keyless GitHub Actions authentication: required APIs, a Workload Identity Pool and GitHub OIDC provider, a dedicated deployment service account, and the service-account impersonation binding.
+
+The trust policy uses immutable GitHub owner and repository IDs and is restricted to `refs/heads/main` by default. The deployment service account receives no project role unless one is explicitly supplied, and broad `roles/owner` / `roles/editor` grants are rejected.
+
+Part 1 intentionally does not modify a workflow to request an OIDC token. Workflow authentication is completed in issue #4 part 2.
+
+See [`bootstrap/github-actions-wif/README.md`](bootstrap/github-actions-wif/README.md) for the trust model, bootstrap process, security invariants, and outputs consumed by the workflow integration.
+
 ## Terraform validation pipeline
 
 Pull requests run independent quality gates for Terraform formatting, root validation, TFLint, and Trivy IaC security scanning. GitHub Actions are pinned to immutable commit SHAs and monitored by Dependabot for reviewed version updates.
@@ -132,7 +143,7 @@ The implementation will evolve incrementally:
 ## Current toolchain
 
 - Terraform CLI: pinned through `.terraform-version`.
-- Google provider: version constraints are declared by each Terraform root/module as appropriate; `bootstrap/state` currently targets Google provider 8.x.
+- Google provider: version constraints are declared by each Terraform root/module as appropriate; current bootstrap roots target Google provider 8.x and commit their dependency lock files.
 - TFLint: Terraform recommended rules plus the Google Cloud ruleset.
 - Dependabot: weekly GitHub Actions version updates with grouped minor/patch upgrades and isolated major upgrades.
 
