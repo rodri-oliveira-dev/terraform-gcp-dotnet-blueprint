@@ -45,13 +45,16 @@ Environment roots are responsible for:
 
 The initial reference workload consists of:
 
-1. A .NET API hosted on Cloud Run v2.
+1. A .NET API hosted on a Cloud Run v2 service.
 2. Pub/Sub for asynchronous message delivery.
-3. A Cloud Run Job for background processing.
-4. Secret Manager for runtime secrets.
-5. Memorystore for Redis for managed caching.
-6. Google Cloud IAM using least-privilege service accounts.
-7. Cloud Logging and Monitoring integrations for operational visibility.
+3. A request-serving Cloud Run v2 worker service that receives Pub/Sub push deliveries.
+4. A separate Cloud Run Job for finite batch or scheduled processing, invoked through supported execution mechanisms such as Cloud Scheduler calling the authenticated Cloud Run Admin API.
+5. Secret Manager for runtime secrets.
+6. Memorystore for Redis for managed caching.
+7. Google Cloud IAM using least-privilege service accounts.
+8. Cloud Logging and Monitoring integrations for operational visibility.
+
+Pub/Sub does not directly execute a Cloud Run Job. Jobs expose an execution API rather than a request-serving endpoint, so event-driven message consumption is modeled through a Cloud Run service. Jobs remain available for workloads that are explicitly started and run to completion.
 
 ## Delivery architecture
 
