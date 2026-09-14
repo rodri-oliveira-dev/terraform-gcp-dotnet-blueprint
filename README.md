@@ -25,17 +25,25 @@ The project is intentionally focused on infrastructure architecture rather than 
 
 ```mermaid
 flowchart TD
-    Internet[Internet] --> API[Cloud Run\n.NET API]
+    Internet[Internet] --> API[Cloud Run Service\n.NET API]
     API --> Secrets[Secret Manager]
     API --> PubSub[Pub/Sub]
     API --> Redis[Memorystore for Redis]
-    PubSub --> Worker[Cloud Run Job\n.NET Worker]
+
+    PubSub --> Worker[Cloud Run Service\n.NET Worker]
     Worker --> Secrets
     Worker --> Redis
+
+    Scheduler[Cloud Scheduler] --> JobAPI[Cloud Run Admin API]
+    JobAPI --> Batch[Cloud Run Job\n.NET Batch Worker]
+    Batch --> Secrets
+    Batch --> Redis
 
     GitHub[GitHub Actions] --> WIF[Workload Identity Federation]
     WIF --> GCP[Google Cloud]
 ```
+
+Pub/Sub messages are consumed by a request-serving Cloud Run service. Cloud Run Jobs are modeled separately for finite batch or scheduled workloads and are invoked through supported execution mechanisms such as Cloud Scheduler calling the authenticated Cloud Run Admin API. Pub/Sub is therefore not modeled as directly launching a Cloud Run Job.
 
 ## Planned repository structure
 
@@ -83,8 +91,8 @@ The implementation will evolve incrementally:
 2. Remote state bootstrap on Cloud Storage.
 3. Terraform CI, linting and security scanning.
 4. GitHub Actions authentication through Workload Identity Federation.
-5. Cloud Run v2 service module for a .NET API.
-6. Pub/Sub and Cloud Run Job for asynchronous processing.
+5. Cloud Run v2 service module for .NET APIs and request-serving workers.
+6. Pub/Sub worker-service integration plus Cloud Run Job support for scheduled/batch processing.
 7. Secret Manager, least-privilege IAM and Memorystore for Redis.
 8. Observability, environment composition and production-readiness documentation.
 
