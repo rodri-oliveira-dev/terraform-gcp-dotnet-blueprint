@@ -27,6 +27,8 @@ Bootstrap code must remain intentionally small because it has a different lifecy
 - include validation for relevant inputs;
 - document security-sensitive defaults.
 
+Reusable modules do not configure provider credentials or backends. Roots inject project, region, identities, and environment-specific policy.
+
 ### Environment roots
 
 `environments/dev` and `environments/prod` are Terraform root modules. They compose reusable modules and contain environment-specific configuration.
@@ -58,6 +60,26 @@ The initial reference workload consists of:
 
 Pub/Sub does not directly execute a Cloud Run Job. Jobs expose an execution API rather than a request-serving endpoint, so event-driven message consumption is modeled through a Cloud Run service. Jobs remain available for workloads that are explicitly started and run to completion.
 
+### Cloud Run service module boundary
+
+`modules/cloud-run-service` owns a single request-serving `google_cloud_run_v2_service`. It is designed for both .NET APIs and request-serving worker services.
+
+The module controls workload-level configuration that belongs to the service itself:
+
+- container image and request port;
+- CPU, memory, CPU idle behavior, and startup CPU boost;
+- per-instance concurrency and request timeout;
+- revision-level automatic scaling bounds;
+- runtime service-account assignment;
+- literal environment variables and Secret Manager-backed environment references;
+- labels, ingress, and deletion protection.
+
+The module deliberately does **not** create service accounts, IAM grants, secrets, secret versions, VPC resources, Pub/Sub resources, or environment roots. Those capabilities remain separate so identity, access, networking, and environment policy are composed explicitly by callers.
+
+A runtime service account is required rather than allowing Cloud Run to fall back implicitly to a project default identity. Secret-backed environment variables carry only a secret identifier and version; Terraform source never receives an application secret payload through this module.
+
+Secure defaults favor internal-only ingress, provider-level deletion protection, scale-to-zero, a bounded maximum instance count, and no public invocation IAM. A caller may choose broader ingress, but unauthenticated invocation requires a separate IAM decision outside this module.
+
 ## Delivery architecture
 
 GitHub Actions validates Terraform changes before merge. Authentication to Google Cloud uses Workload Identity Federation instead of long-lived service account keys.
@@ -69,9 +91,9 @@ Pull Request
     |
     +--> terraform fmt
     +--> terraform validate
+    +--> terraform test
     +--> TFLint
     +--> security scanning
-    +--> terraform plan
 
 Merge / approved deployment
     |
@@ -118,6 +140,7 @@ See `bootstrap/state/README.md` for the bootstrap, backend migration, and recove
 - OIDC permission is granted only to jobs that need to exchange a token.
 - Pull-request quality gates remain credential-free.
 - Generated `gha-creds-*.json` files are ignored.
+- Runtime workload identities are explicit rather than implicit project defaults.
 - Least-privilege IAM roles wherever practical.
 - Deployment identities receive no broad project role by default.
 - Secrets are referenced from Secret Manager rather than stored in Terraform configuration.
