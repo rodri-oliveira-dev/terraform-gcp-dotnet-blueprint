@@ -52,6 +52,7 @@ Pub/Sub messages are consumed by a request-serving Cloud Run service. Cloud Run 
 ├── .agents/
 │   └── skills/
 ├── .github/
+│   ├── dependabot.yml
 │   └── workflows/
 ├── bootstrap/
 │   └── state/
@@ -109,6 +110,12 @@ Bootstrap remains local by design so the repository does not introduce a circula
 
 See [`bootstrap/state/README.md`](bootstrap/state/README.md) for prerequisites, initialization, manual apply, backend configuration, migration from local state, recovery guidance, and environment-specific state prefixes.
 
+## Terraform validation pipeline
+
+Pull requests run independent quality gates for Terraform formatting, root validation, TFLint, and Trivy IaC security scanning. GitHub Actions are pinned to immutable commit SHAs and monitored by Dependabot for reviewed version updates.
+
+See [`docs/terraform-ci.md`](docs/terraform-ci.md) for root discovery, security assumptions, dependency-update policy, and local reproduction commands.
+
 ## Roadmap
 
 The implementation will evolve incrementally:
@@ -127,6 +134,7 @@ The implementation will evolve incrementally:
 - Terraform CLI: pinned through `.terraform-version`.
 - Google provider: version constraints are declared by each Terraform root/module as appropriate; `bootstrap/state` currently targets Google provider 8.x.
 - TFLint: Terraform recommended rules plus the Google Cloud ruleset.
+- Dependabot: weekly GitHub Actions version updates with grouped minor/patch upgrades and isolated major upgrades.
 
 ## License
 
