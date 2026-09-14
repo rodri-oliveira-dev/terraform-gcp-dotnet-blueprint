@@ -9,13 +9,13 @@ The repository validates Terraform changes in GitHub Actions before merge. The w
 The workflow contains four independent quality gates:
 
 1. **Terraform format** — runs `terraform fmt -check -recursive -diff` and fails when committed HCL is not formatted.
-2. **Terraform validate** — discovers root modules under `bootstrap/`, `environments/`, and `examples/`, initializes each root with `-backend=false`, requires its committed `.terraform.lock.hcl`, and runs `terraform validate`.
+2. **Terraform validate** — discovers deployable roots under `bootstrap/`, `environments/`, and `examples/`, plus reusable child modules under `modules/`. Roots are initialized with `-backend=false`, require a committed `.terraform.lock.hcl`, and are validated with their locked providers. Reusable modules are initialized and validated independently without requiring a root lock file.
 3. **TFLint** — installs the version pinned in `.tflint-version`, initializes the repository configuration, and runs recursively with the Terraform recommended rules and the pinned Google Cloud ruleset from `.tflint.hcl`.
 4. **IaC security scan** — runs Trivy configuration scanning and fails on HIGH or CRITICAL findings.
 
 Each gate is a separate job so failures are easy to identify in pull-request checks.
 
-## Terraform root discovery
+## Terraform root and module discovery
 
 Repository architecture defines deployable or independently initialized roots as direct child directories of:
 
@@ -23,9 +23,11 @@ Repository architecture defines deployable or independently initialized roots as
 - `environments/`;
 - `examples/`.
 
-Reusable modules under `modules/` are not treated as independent roots and therefore do not own backends or root dependency lock files.
+Every root must commit `.terraform.lock.hcl`. Root validation uses `terraform init -backend=false -lockfile=readonly` so CI cannot silently update provider selections.
 
-Every root must commit `.terraform.lock.hcl`. Validation uses `terraform init -backend=false -lockfile=readonly` so CI cannot silently update provider selections.
+Reusable child modules are discovered as direct child directories of `modules/` that contain Terraform files. They are validated independently even before an environment or example consumes them, which catches provider-schema errors, invalid references, and other semantic configuration failures early.
+
+Reusable modules do not own backends or root dependency lock files. CI therefore initializes them with `terraform init -backend=false` and runs `terraform validate` without imposing the root lock-file requirement.
 
 ## Security and credentials
 
@@ -73,6 +75,17 @@ For each Terraform root, for example `bootstrap/state`:
 terraform -chdir=bootstrap/state init -backend=false -input=false -lockfile=readonly
 terraform -chdir=bootstrap/state validate
 ```
+
+### Reusable module validation
+
+For each reusable module, for example `modules/cloud-run-service`:
+
+```bash
+terraform -chdir=modules/cloud-run-service init -backend=false -input=false
+terraform -chdir=modules/cloud-run-service validate
+```
+
+Reusable modules intentionally do not require a committed `.terraform.lock.hcl`; provider selections are locked by the root modules that consume them.
 
 ### TFLint
 
