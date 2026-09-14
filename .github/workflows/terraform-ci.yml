@@ -63,7 +63,7 @@ jobs:
           terraform_version: ${{ steps.terraform-version.outputs.version }}
           terraform_wrapper: false
 
-      - name: Initialize and validate Terraform roots
+      - name: Initialize and validate Terraform roots and modules
         shell: bash
         run: |
           set -euo pipefail
@@ -81,7 +81,7 @@ jobs:
           fi
 
           for root in "${roots[@]}"; do
-            echo "::group::Validate ${root}"
+            echo "::group::Validate root ${root}"
 
             if [[ ! -f "${root}/.terraform.lock.hcl" ]]; then
               echo "::error file=${root}/.terraform.lock.hcl::Terraform roots must commit a dependency lock file."
@@ -94,6 +94,24 @@ jobs:
               -lockfile=readonly \
               -no-color
             terraform -chdir="$root" validate -no-color
+
+            echo "::endgroup::"
+          done
+
+          mapfile -t modules < <(
+            if [[ -d modules ]]; then
+              find modules -mindepth 2 -maxdepth 2 -type f -name '*.tf' -printf '%h\n' | sort -u
+            fi
+          )
+
+          for module in "${modules[@]}"; do
+            echo "::group::Validate reusable module ${module}"
+
+            terraform -chdir="$module" init \
+              -backend=false \
+              -input=false \
+              -no-color
+            terraform -chdir="$module" validate -no-color
 
             echo "::endgroup::"
           done
