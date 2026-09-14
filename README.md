@@ -1,2 +1,107 @@
-# terraform-gcp-dotnet-blueprint
+# Terraform GCP .NET Blueprint
+
 Production-oriented Terraform blueprint for running .NET workloads on Google Cloud, with reusable modules, secure defaults, CI/CD, IAM, secrets, messaging, caching, observability, and multi-environment infrastructure patterns.
+
+> **Status:** Foundation in progress.
+
+## Goals
+
+This repository demonstrates how to structure production-oriented Infrastructure as Code for .NET workloads on Google Cloud using Terraform.
+
+The project is intentionally focused on infrastructure architecture rather than application complexity. It aims to demonstrate:
+
+- reusable Terraform modules;
+- explicit environment composition;
+- secure-by-default IAM and secret management;
+- Cloud Run services and jobs;
+- asynchronous messaging with Pub/Sub;
+- managed caching with Memorystore for Redis;
+- observability and operational readiness;
+- automated validation and security checks;
+- remote state and CI/CD-friendly authentication;
+- documented architectural decisions.
+
+## Target architecture
+
+```mermaid
+flowchart TD
+    Internet[Internet] --> API[Cloud Run Service\n.NET API]
+    API --> Secrets[Secret Manager]
+    API --> PubSub[Pub/Sub]
+    API --> Redis[Memorystore for Redis]
+
+    PubSub --> Worker[Cloud Run Service\n.NET Worker]
+    Worker --> Secrets
+    Worker --> Redis
+
+    Scheduler[Cloud Scheduler] --> JobAPI[Cloud Run Admin API]
+    JobAPI --> Batch[Cloud Run Job\n.NET Batch Worker]
+    Batch --> Secrets
+    Batch --> Redis
+
+    GitHub[GitHub Actions] --> WIF[Workload Identity Federation]
+    WIF --> GCP[Google Cloud]
+```
+
+Pub/Sub messages are consumed by a request-serving Cloud Run service. Cloud Run Jobs are modeled separately for finite batch or scheduled workloads and are invoked through supported execution mechanisms such as Cloud Scheduler calling the authenticated Cloud Run Admin API. Pub/Sub is therefore not modeled as directly launching a Cloud Run Job.
+
+## Planned repository structure
+
+```text
+.
+├── .github/
+│   └── workflows/
+├── bootstrap/
+│   └── state/
+├── docs/
+│   ├── architecture.md
+│   └── adr/
+├── environments/
+│   ├── dev/
+│   └── prod/
+├── modules/
+│   ├── cloud-run-service/
+│   ├── cloud-run-job/
+│   ├── iam/
+│   ├── memorystore/
+│   ├── pubsub/
+│   └── secret-manager/
+├── examples/
+│   └── minimal/
+├── .terraform-version
+├── .tflint.hcl
+└── README.md
+```
+
+## Design principles
+
+1. **Secure by default** — no long-lived cloud credentials in the repository or CI/CD pipeline.
+2. **Least privilege** — IAM permissions are scoped to the minimum required access.
+3. **Reusable modules** — infrastructure capabilities are isolated behind explicit inputs and outputs.
+4. **Environment composition** — environments consume modules instead of duplicating resource definitions.
+5. **Automated quality gates** — formatting, validation, linting and security checks run before changes are merged.
+6. **Documented decisions** — relevant trade-offs are captured as Architecture Decision Records.
+7. **Production-oriented, not production-prescriptive** — the repository demonstrates patterns that should be adapted to each workload and organization.
+
+## Roadmap
+
+The implementation will evolve incrementally:
+
+1. Terraform foundation and repository conventions.
+2. Remote state bootstrap on Cloud Storage.
+3. Terraform CI, linting and security scanning.
+4. GitHub Actions authentication through Workload Identity Federation.
+5. Cloud Run v2 service module for .NET APIs and request-serving workers.
+6. Pub/Sub worker-service integration plus Cloud Run Job support for scheduled/batch processing.
+7. Secret Manager, least-privilege IAM and Memorystore for Redis.
+8. Observability, environment composition and production-readiness documentation.
+
+## Current toolchain
+
+- Terraform CLI: pinned through `.terraform-version`.
+- Google provider: version constraints will be declared by each Terraform root/module as appropriate.
+- TFLint: Terraform recommended rules plus the Google Cloud ruleset.
+
+## License
+
+Licensed under the MIT License. See [LICENSE](LICENSE).
