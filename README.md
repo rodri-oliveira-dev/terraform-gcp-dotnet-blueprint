@@ -73,7 +73,7 @@ Pub/Sub messages are consumed by a request-serving Cloud Run service. Cloud Run 
 │   ├── pubsub/
 │   └── secret-manager/
 ├── examples/
-│   └── minimal/
+│   └── cloud-run-service/
 ├── AGENTS.md
 ├── .terraform-version
 ├── .tflint.hcl
@@ -86,7 +86,7 @@ Pub/Sub messages are consumed by a request-serving Cloud Run service. Cloud Run 
 2. **Least privilege** — IAM permissions are scoped to the minimum required access.
 3. **Reusable modules** — infrastructure capabilities are isolated behind explicit inputs and outputs.
 4. **Environment composition** — environments consume modules instead of duplicating resource definitions.
-5. **Automated quality gates** — formatting, validation, linting and security checks run before changes are merged.
+5. **Automated quality gates** — formatting, validation, native Terraform tests, linting and security checks run before changes are merged.
 6. **Documented decisions** — relevant trade-offs are captured as Architecture Decision Records.
 7. **Production-oriented, not production-prescriptive** — the repository demonstrates patterns that should be adapted to each workload and organization.
 
@@ -121,11 +121,19 @@ The trust policy uses immutable GitHub owner and repository IDs and is restricte
 
 See [`bootstrap/github-actions-wif/README.md`](bootstrap/github-actions-wif/README.md) for bootstrap instructions, required repository variables, the trust model, smoke-test procedure, and security invariants.
 
+## Cloud Run v2 service module
+
+`modules/cloud-run-service` is the first workload child module. It manages one request-serving `google_cloud_run_v2_service` for .NET APIs or workers and exposes typed inputs for image, CPU, memory, concurrency, scaling, runtime identity, environment variables, Secret Manager references, labels, ingress, and deletion protection.
+
+The module requires an explicit runtime service account, defaults to internal-only ingress and provider-level deletion protection, and does not create IAM bindings or secret payloads. Secret-backed environment variables contain only secret identifiers and versions; access grants remain the responsibility of later IAM/Secret Manager composition.
+
+Native Terraform tests use a mocked Google provider and plan mode, so module defaults and validation can be exercised in pull requests without Google Cloud credentials or billable resources. See [`modules/cloud-run-service/README.md`](modules/cloud-run-service/README.md) and [`examples/cloud-run-service/`](examples/cloud-run-service/) for the contract and isolated usage example.
+
 ## Terraform validation pipeline
 
-Pull requests run independent quality gates for Terraform formatting, root validation, TFLint, and Trivy IaC security scanning. GitHub Actions are pinned to immutable commit SHAs and monitored by Dependabot for reviewed version updates.
+Pull requests run independent quality gates for Terraform formatting, root/module validation, native Terraform tests, TFLint, and Trivy IaC security scanning. GitHub Actions are pinned to immutable commit SHAs and monitored by Dependabot for reviewed version updates.
 
-See [`docs/terraform-ci.md`](docs/terraform-ci.md) for root discovery, security assumptions, dependency-update policy, and local reproduction commands.
+See [`docs/terraform-ci.md`](docs/terraform-ci.md) for discovery rules, testing behavior, security assumptions, dependency-update policy, and local reproduction commands.
 
 ## Roadmap
 
@@ -143,7 +151,8 @@ The implementation will evolve incrementally:
 ## Current toolchain
 
 - Terraform CLI: pinned through `.terraform-version`.
-- Google provider: version constraints are declared by each Terraform root/module as appropriate; current bootstrap roots target Google provider 8.x and commit their dependency lock files.
+- Google provider: version constraints are declared by each Terraform root/module as appropriate; current roots target Google provider 8.x and commit dependency lock files.
+- Terraform native tests: reusable modules use plan-mode tests and provider mocks where practical.
 - TFLint: Terraform recommended rules plus the Google Cloud ruleset.
 - Dependabot: weekly GitHub Actions version updates with grouped minor/patch upgrades and isolated major upgrades.
 - Google Cloud CLI: pinned in the WIF smoke test for reproducible authentication verification.
