@@ -87,17 +87,82 @@ variable "resources" {
     cpu_idle          = optional(bool, true)
     startup_cpu_boost = optional(bool, true)
   })
-  description = "Container resource limits and CPU behavior. CPU is expressed as a positive numeric string and memory as Mi or Gi."
+  description = "Container resource limits and CPU behavior. CPU is restricted to supported whole-vCPU Cloud Run service configurations; memory must use Mi or Gi."
   default     = {}
 
   validation {
-    condition     = can(tonumber(var.resources.cpu)) && tonumber(var.resources.cpu) > 0
-    error_message = "resources.cpu must be a positive numeric string, for example \"1\" or \"2\"."
+    condition     = contains(["1", "2", "4", "6", "8"], var.resources.cpu)
+    error_message = "resources.cpu must be one of the supported whole-vCPU values: \"1\", \"2\", \"4\", \"6\", or \"8\". Fractional CPU is intentionally not supported by this module."
   }
 
   validation {
     condition     = can(regex("^[1-9][0-9]*(Mi|Gi)$", var.resources.memory))
     error_message = "resources.memory must be a positive quantity using Mi or Gi, for example \"512Mi\" or \"1Gi\"."
+  }
+
+  validation {
+    condition = can(regex("^[1-9][0-9]*(Mi|Gi)$", var.resources.memory)) && (
+      endswith(var.resources.memory, "Gi")
+      ? tonumber(trimsuffix(var.resources.memory, "Gi")) * 1024
+      : tonumber(trimsuffix(var.resources.memory, "Mi"))
+    ) >= 512 && (
+      endswith(var.resources.memory, "Gi")
+      ? tonumber(trimsuffix(var.resources.memory, "Gi")) * 1024
+      : tonumber(trimsuffix(var.resources.memory, "Mi"))
+    ) <= 32768
+    error_message = "resources.memory must be between 512Mi and 32Gi for the Cloud Run execution model used by this module."
+  }
+
+  validation {
+    condition = (
+      var.resources.cpu == "1" ? (
+        endswith(var.resources.memory, "Gi")
+        ? tonumber(trimsuffix(var.resources.memory, "Gi")) * 1024
+        : tonumber(trimsuffix(var.resources.memory, "Mi"))
+      ) <= 4096 :
+      var.resources.cpu == "2" ? (
+        endswith(var.resources.memory, "Gi")
+        ? tonumber(trimsuffix(var.resources.memory, "Gi")) * 1024
+        : tonumber(trimsuffix(var.resources.memory, "Mi"))
+      ) <= 8192 :
+      var.resources.cpu == "4" ? (
+        (
+          endswith(var.resources.memory, "Gi")
+          ? tonumber(trimsuffix(var.resources.memory, "Gi")) * 1024
+          : tonumber(trimsuffix(var.resources.memory, "Mi"))
+        ) >= 2048 &&
+        (
+          endswith(var.resources.memory, "Gi")
+          ? tonumber(trimsuffix(var.resources.memory, "Gi")) * 1024
+          : tonumber(trimsuffix(var.resources.memory, "Mi"))
+        ) <= 16384
+      ) :
+      var.resources.cpu == "6" ? (
+        (
+          endswith(var.resources.memory, "Gi")
+          ? tonumber(trimsuffix(var.resources.memory, "Gi")) * 1024
+          : tonumber(trimsuffix(var.resources.memory, "Mi"))
+        ) >= 4096 &&
+        (
+          endswith(var.resources.memory, "Gi")
+          ? tonumber(trimsuffix(var.resources.memory, "Gi")) * 1024
+          : tonumber(trimsuffix(var.resources.memory, "Mi"))
+        ) <= 24576
+      ) :
+      var.resources.cpu == "8" ? (
+        (
+          endswith(var.resources.memory, "Gi")
+          ? tonumber(trimsuffix(var.resources.memory, "Gi")) * 1024
+          : tonumber(trimsuffix(var.resources.memory, "Mi"))
+        ) >= 4096 &&
+        (
+          endswith(var.resources.memory, "Gi")
+          ? tonumber(trimsuffix(var.resources.memory, "Gi")) * 1024
+          : tonumber(trimsuffix(var.resources.memory, "Mi"))
+        ) <= 32768
+      ) : false
+    )
+    error_message = "resources.memory is incompatible with resources.cpu. Supported maxima are 4Gi for 1 vCPU and 8Gi for 2 vCPU; 4 vCPU requires 2-16Gi; 6 vCPU requires 4-24Gi; 8 vCPU requires 4-32Gi."
   }
 }
 
@@ -179,8 +244,13 @@ variable "environment_variables" {
   default     = {}
 
   validation {
-    condition     = alltrue([for name in keys(var.environment_variables) : can(regex("^[A-Za-z_][A-Za-z0-9_]*$", name))])
-    error_message = "environment_variables keys must be valid environment variable identifiers."
+    condition = alltrue([
+      for name in keys(var.environment_variables) :
+      can(regex("^[A-Za-z_][A-Za-z0-9_]*$", name)) &&
+      name != "PORT" &&
+      !startswith(name, "X_GOOGLE_")
+    ])
+    error_message = "environment_variables keys must be valid identifiers and must not use Cloud Run-reserved PORT or X_GOOGLE_ names."
   }
 }
 
@@ -196,10 +266,12 @@ variable "secret_environment_variables" {
     condition = alltrue([
       for name, config in var.secret_environment_variables :
       can(regex("^[A-Za-z_][A-Za-z0-9_]*$", name)) &&
+      name != "PORT" &&
+      !startswith(name, "X_GOOGLE_") &&
       trimspace(config.secret) != "" &&
       trimspace(config.version) != ""
     ])
-    error_message = "secret_environment_variables keys must be valid environment variable identifiers and each secret/version reference must be non-empty."
+    error_message = "secret_environment_variables keys must be valid, non-reserved environment variable identifiers and each secret/version reference must be non-empty."
   }
 }
 
