@@ -91,11 +91,13 @@ Merge / approved deployment
 
 The Google Cloud trust configuration is managed by `bootstrap/github-actions-wif`.
 
-The provider uses GitHub's OIDC issuer and admits tokens only when the immutable numeric GitHub owner ID and repository ID match the configured values and the token ref matches the explicitly allowed ref. Repository and owner names are mapped only when useful for diagnostics; they are not authorization boundaries.
+The provider uses GitHub's OIDC issuer and admits tokens only when the immutable numeric GitHub owner ID and repository ID match the configured values and the token ref matches the explicitly allowed ref. Repository and owner names are not authorization boundaries.
 
 The federated repository principal receives only `roles/iam.workloadIdentityUser` on the dedicated deployment service account. The service account itself receives no Google Cloud project role by default. Concrete deployment permissions are added only when a later capability demonstrates that they are required, preferably at resource scope where the target service supports it.
 
-The GitHub workflow side of the exchange is introduced separately. Only jobs that actually authenticate should receive `id-token: write`; repository-wide workflow permissions should remain read-only otherwise.
+The GitHub side is implemented by `.github/workflows/gcp-auth-smoke.yml`. The workflow is manually invoked from `main`, where the default trust condition accepts the token ref. Workflow-wide permissions start empty, and only the authentication job receives `contents: read` plus `id-token: write`.
+
+The workflow uses `google-github-actions/auth` with the full provider resource name and dedicated service account, then runs `gcloud auth print-access-token` to force an actual token exchange and impersonation. Pull-request validation remains credential-free and therefore cannot authenticate to Google Cloud accidentally.
 
 ## State strategy
 
@@ -114,6 +116,8 @@ See `bootstrap/state/README.md` for the bootstrap, backend migration, and recove
 - No service account keys stored in GitHub secrets.
 - GitHub OIDC trust is constrained by immutable owner/repository identifiers and an explicit Git ref.
 - OIDC permission is granted only to jobs that need to exchange a token.
+- Pull-request quality gates remain credential-free.
+- Generated `gha-creds-*.json` files are ignored.
 - Least-privilege IAM roles wherever practical.
 - Deployment identities receive no broad project role by default.
 - Secrets are referenced from Secret Manager rather than stored in Terraform configuration.
