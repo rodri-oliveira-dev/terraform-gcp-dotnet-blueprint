@@ -59,6 +59,7 @@ Pub/Sub messages are consumed by a request-serving Cloud Run service. Cloud Run 
 │   ├── architecture.md
 │   ├── agent-skills.md
 │   ├── agent-workflow.md
+│   ├── terraform-ci.md
 │   └── adr/
 ├── environments/
 │   ├── dev/
@@ -74,6 +75,7 @@ Pub/Sub messages are consumed by a request-serving Cloud Run service. Cloud Run 
 │   └── minimal/
 ├── AGENTS.md
 ├── .terraform-version
+├── .tflint-version
 ├── .tflint.hcl
 └── README.md
 ```
@@ -109,6 +111,19 @@ Bootstrap remains local by design so the repository does not introduce a circula
 
 See [`bootstrap/state/README.md`](bootstrap/state/README.md) for prerequisites, initialization, manual apply, backend configuration, migration from local state, recovery guidance, and environment-specific state prefixes.
 
+## Terraform validation pipeline
+
+Pull requests and pushes to `main` run `.github/workflows/terraform-ci.yml` with four independent quality gates:
+
+- `terraform fmt -check -recursive -diff`;
+- `terraform init -backend=false -lockfile=readonly` plus `terraform validate` for every Terraform root under `bootstrap/`, `environments/`, and `examples/`;
+- TFLint with the Terraform recommended rules and Google Cloud ruleset;
+- Trivy IaC scanning, with HIGH and CRITICAL findings configured as blocking.
+
+The workflow uses only read-only repository permissions and does not authenticate to Google Cloud or consume long-lived cloud credentials. Terraform, TFLint, provider lock files, TFLint plugins, and third-party Actions are explicitly versioned or pinned to keep validation reproducible.
+
+See [`docs/terraform-ci.md`](docs/terraform-ci.md) for root discovery rules, security constraints, tool-version policy, and local reproduction commands.
+
 ## Roadmap
 
 The implementation will evolve incrementally:
@@ -126,7 +141,8 @@ The implementation will evolve incrementally:
 
 - Terraform CLI: pinned through `.terraform-version`.
 - Google provider: version constraints are declared by each Terraform root/module as appropriate; `bootstrap/state` currently targets Google provider 8.x.
-- TFLint: Terraform recommended rules plus the Google Cloud ruleset.
+- TFLint: CLI version pinned in `.tflint-version`, using Terraform recommended rules plus the Google Cloud ruleset from `.tflint.hcl`.
+- Trivy: configuration scanning runs in GitHub Actions for HIGH and CRITICAL IaC findings.
 
 ## License
 
