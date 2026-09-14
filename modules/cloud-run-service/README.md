@@ -15,6 +15,16 @@ The module intentionally owns only the Cloud Run service configuration. Runtime 
 
 Callers are responsible for granting the runtime service account access to any referenced secrets. Prefer resource-level `roles/secretmanager.secretAccessor` grants on the required secrets rather than broad project-level access.
 
+## Resource constraints
+
+The module validates Cloud Run platform limits before a deployment reaches the provider:
+
+- CPU is intentionally restricted to whole-vCPU configurations: `1`, `2`, `4`, `6`, or `8` vCPU. Fractional CPU is not exposed because it carries additional execution-environment, billing, and concurrency constraints that are outside this module's current contract.
+- Memory must be between `512Mi` and `32Gi` and compatible with the selected CPU: up to `4Gi` for 1 vCPU, up to `8Gi` for 2 vCPU, `2-16Gi` for 4 vCPU, `4-24Gi` for 6 vCPU, and `4-32Gi` for 8 vCPU.
+- `PORT` and names starting with `X_GOOGLE_` are rejected for both literal and Secret Manager-backed environment variables because they are reserved by Cloud Run.
+
+These validations are covered by native Terraform negative tests so invalid configurations fail during CI rather than during deployment.
+
 ## Usage
 
 ```hcl
@@ -49,7 +59,7 @@ module "api" {
   }
 
   labels = {
-    component = "api"
+    component  = "api"
     managed-by = "terraform"
   }
 }
@@ -68,14 +78,14 @@ Using `INGRESS_TRAFFIC_ALL` only changes the network ingress setting. It does **
 | `container_image` | `string` | required | Container image URI. |
 | `service_account` | `string` | required | Existing runtime service account email. |
 | `container_port` | `number` | `8080` | Container request port. |
-| `resources` | `object` | CPU `1`, memory `512Mi`, CPU idle enabled, startup CPU boost enabled | Container compute configuration. |
+| `resources` | `object` | CPU `1`, memory `512Mi`, CPU idle enabled, startup CPU boost enabled | Container compute configuration constrained to supported CPU/memory combinations. |
 | `scaling` | `object` | min `0`, max `10` | Revision-level automatic scaling bounds. |
 | `max_instance_request_concurrency` | `number` | `80` | Maximum concurrent requests per instance, from 1 through 1000. |
 | `timeout` | `string` | `300s` | Maximum request duration, capped at 3600 seconds. |
 | `ingress` | `string` | `INGRESS_TRAFFIC_INTERNAL_ONLY` | Supported Cloud Run ingress policy. |
 | `deletion_protection` | `bool` | `true` | Provider-level service deletion protection. |
-| `environment_variables` | `map(string)` | `{}` | Literal, non-secret environment variables. |
-| `secret_environment_variables` | `map(object)` | `{}` | Secret Manager references keyed by environment variable name. |
+| `environment_variables` | `map(string)` | `{}` | Literal, non-secret environment variables. Reserved Cloud Run names are rejected. |
+| `secret_environment_variables` | `map(object)` | `{}` | Secret Manager references keyed by non-reserved environment variable name. |
 | `labels` | `map(string)` | `{}` | Service labels. |
 
 A variable name cannot appear in both `environment_variables` and `secret_environment_variables`.
@@ -101,7 +111,7 @@ terraform validate
 terraform test
 ```
 
-The unit tests cover secure defaults, resource mapping, output forwarding, input validation, and conflicting environment variable sources.
+The unit tests cover secure defaults, resource mapping, output forwarding, CPU/memory platform constraints, reserved environment variable names, input validation, and conflicting environment variable sources.
 
 ## Out of scope
 
