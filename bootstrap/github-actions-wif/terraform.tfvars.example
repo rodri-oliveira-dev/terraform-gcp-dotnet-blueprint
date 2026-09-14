@@ -1,0 +1,13 @@
+project_id = "my-gcp-project"
+
+# Immutable GitHub IDs for rodri-oliveira-dev/terraform-gcp-dotnet-blueprint.
+# Override these values when reusing the blueprint from another owner/repository.
+github_owner_id      = "3470248"
+github_repository_id = "1370437821"
+
+# Part 1 deliberately trusts only the main branch.
+github_ref = "refs/heads/main"
+
+# No project-level access is granted by default. Add only concrete roles
+# required by a deployment workflow after reviewing least-privilege needs.
+deployment_project_roles = []
