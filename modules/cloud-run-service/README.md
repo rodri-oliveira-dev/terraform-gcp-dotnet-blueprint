@@ -19,11 +19,11 @@ Callers are responsible for granting the runtime service account access to any r
 
 The module validates Cloud Run platform limits before a deployment reaches the provider:
 
-- CPU is intentionally restricted to whole-vCPU configurations: `1`, `2`, `4`, `6`, or `8` vCPU. Fractional CPU is not exposed because it carries additional execution-environment, billing, and concurrency constraints that are outside this module's current contract.
-- Memory must be between `512Mi` and `32Gi` and compatible with the selected CPU: up to `4Gi` for 1 vCPU, up to `8Gi` for 2 vCPU, `2-16Gi` for 4 vCPU, `4-24Gi` for 6 vCPU, and `4-32Gi` for 8 vCPU.
+- CPU is intentionally restricted to `1`, `2`, or `4` vCPU. Fractional CPU is not exposed because it carries additional billing/concurrency constraints, and `6`/`8` vCPU are not exposed because they require the second-generation execution environment, which this module does not configure yet.
+- Memory must be between `512Mi` and `16Gi` and compatible with the selected CPU: up to `4Gi` for 1 vCPU, up to `8Gi` for 2 vCPU, and `2-16Gi` for 4 vCPU.
 - `PORT` and names starting with `X_GOOGLE_` are rejected for both literal and Secret Manager-backed environment variables because they are reserved by Cloud Run.
 
-These validations are covered by native Terraform negative tests so invalid configurations fail during CI rather than during deployment.
+These validations are covered by native Terraform negative tests so invalid configurations fail during CI rather than during deployment. If future requirements need 6/8 vCPU, the module should first expose or deliberately configure the Gen2 execution environment and add matching cross-validation.
 
 ## Usage
 
@@ -111,7 +111,7 @@ terraform validate
 terraform test
 ```
 
-The unit tests cover secure defaults, resource mapping, output forwarding, CPU/memory platform constraints, reserved environment variable names, input validation, and conflicting environment variable sources.
+The unit tests cover secure defaults, resource mapping, output forwarding, CPU/memory platform constraints, Gen2-only CPU rejection, reserved environment variable names, input validation, and conflicting environment variable sources.
 
 ## Out of scope
 
@@ -123,6 +123,7 @@ This module does not create or manage:
 - VPC networking;
 - Pub/Sub subscriptions;
 - Cloud Run Jobs;
+- Gen2 execution-environment selection;
 - environment-specific backends or provider configuration.
 
 Those responsibilities are composed by subsequent modules and environment roots.
