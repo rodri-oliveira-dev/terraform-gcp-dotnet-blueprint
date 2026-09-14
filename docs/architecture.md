@@ -84,9 +84,15 @@ Merge / approved deployment
 
 ## State strategy
 
-Terraform state will be stored remotely in Google Cloud Storage. State files and local variable files must never be committed to Git.
+Terraform workload state will be stored remotely in Google Cloud Storage. State files and local variable files must never be committed to Git.
 
-The remote-state bucket is bootstrapped separately from workload infrastructure to avoid a circular dependency between the backend and the infrastructure that creates it.
+The remote-state bucket is created by the independent `bootstrap/state` root. That bootstrap deliberately starts with local state because using the bucket as its own backend would create a circular dependency.
+
+The state bucket enables object versioning, uniform bucket-level access, and enforced public access prevention. Destructive removal is guarded with both `force_destroy = false` and Terraform lifecycle protection.
+
+Each workload root must use a distinct GCS backend prefix, such as `environments/dev` or `environments/prod`, to isolate state. Existing local state must be migrated explicitly with `terraform init -migrate-state`; migration is an operator-reviewed action rather than an implicit repository automation step.
+
+See `bootstrap/state/README.md` for the bootstrap, backend migration, and recovery procedures.
 
 ## Security principles
 
