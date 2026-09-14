@@ -2,7 +2,7 @@
 
 This Terraform root provisions the Google Cloud trust foundation used by GitHub Actions to authenticate without long-lived service account keys.
 
-This is **issue #4, part 1**. It provisions the Google Cloud side only. The GitHub Actions workflow integration (`id-token: write` plus `google-github-actions/auth`) is intentionally deferred to part 2.
+Issue #4 is implemented in two layers: this root provisions the Google Cloud trust boundary, while `.github/workflows/gcp-auth-smoke.yml` exercises the resulting federation from GitHub Actions.
 
 ## What this root creates
 
@@ -40,6 +40,8 @@ The deployment service account receives no Google Cloud project role by default.
 `deployment_project_roles` exists for explicit future needs, but remains empty until a deployment workflow has a concrete permission requirement. The variable rejects the broad legacy basic roles `roles/owner` and `roles/editor`.
 
 Prefer resource-level IAM grants when later modules expose resources that support them. Project-level roles should be added only when a deployment operation genuinely requires project scope.
+
+The authentication smoke test therefore validates federation without needing a project-level role: `gcloud auth print-access-token` forces the token exchange and service-account impersonation, but does not access a workload resource.
 
 ## Prerequisites
 
@@ -84,22 +86,57 @@ Apply only after reviewing the identity and IAM changes:
 terraform apply
 ```
 
-## Outputs consumed by part 2
+Workload Identity Pool, provider, and IAM changes are eventually consistent. A newly applied trust configuration can require a few minutes before the first token exchange succeeds.
 
-After apply, capture:
+## Configure GitHub repository variables
+
+After apply, capture the values consumed by the workflow:
 
 ```bash
 terraform output -raw workload_identity_provider_name
 terraform output -raw deployment_service_account_email
 ```
 
-Part 2 will pass these values to `google-github-actions/auth`. The workflow will request only `contents: read` and `id-token: write`; no service account key will be stored in GitHub.
+Configure these **repository variables** under GitHub Actions; they are identifiers, not secrets:
 
-## Operational notes
+| Repository variable | Value |
+| --- | --- |
+| `GCP_PROJECT_ID` | the Google Cloud project ID used by this root |
+| `GCP_WORKLOAD_IDENTITY_PROVIDER` | `terraform output -raw workload_identity_provider_name` |
+| `GCP_SERVICE_ACCOUNT` | `terraform output -raw deployment_service_account_email` |
 
-Workload Identity Pool, provider, and IAM changes are eventually consistent. A newly applied trust configuration can require a few minutes before the first token exchange succeeds.
+No service account key, JSON credential, or other long-lived GCP credential is stored in GitHub.
 
-The provider uses the default Google Workload Identity Federation audience behavior. Part 2 should use the full provider resource name output by this root as the `workload_identity_provider` value.
+## GitHub Actions authentication
+
+`.github/workflows/gcp-auth-smoke.yml` is intentionally manual (`workflow_dispatch`). Run it from `main` after the Terraform root has been applied and the repository variables above are configured.
+
+The default provider trust only admits `refs/heads/main`, so attempts to authenticate from a feature branch or pull-request ref are expected to fail. Pull requests continue to use credential-free Terraform quality gates.
+
+The authentication job starts with no workflow permissions and grants only:
+
+```yaml
+permissions:
+  contents: read
+  id-token: write
+```
+
+The workflow then:
+
+1. validates the three required repository variables;
+2. checks out the repository without persisting the GitHub token;
+3. uses `google-github-actions/auth` through WIF and the dedicated service account;
+4. installs the pinned Google Cloud CLI;
+5. runs `gcloud auth print-access-token` to force an actual token exchange and service-account impersonation;
+6. verifies that the active account and configured project match the expected values.
+
+The GitHub Actions are pinned to immutable commit SHAs and retain release annotations so Dependabot can keep them reviewable. The Google Cloud CLI is pinned to `584.0.0` for reproducible smoke-test behavior.
+
+## Generated credential files
+
+`google-github-actions/auth` creates a short-lived credentials file in the workspace when `create_credentials_file` is enabled. The repository ignores the action's `gha-creds-*.json` pattern so generated credentials cannot be committed accidentally.
+
+The credentials are ephemeral and derive from GitHub OIDC; they are not service account keys.
 
 ## Security invariants
 
@@ -107,6 +144,9 @@ The provider uses the default Google Workload Identity Federation audience behav
 - no long-lived GCP credential belongs in GitHub secrets;
 - GitHub tenant admission is restricted by immutable numeric owner/repository IDs;
 - the default trust is further restricted to `refs/heads/main`;
+- `id-token: write` exists only on the authentication job that needs it;
 - the service account has no project permissions by default;
 - `roles/owner` and `roles/editor` are explicitly rejected by input validation;
-- the provider dependency is committed in `.terraform.lock.hcl`.
+- the provider dependency is committed in `.terraform.lock.hcl`;
+- GitHub Actions are pinned to immutable commits;
+- generated `gha-creds-*.json` files are ignored.
