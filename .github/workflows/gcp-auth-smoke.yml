@@ -1,0 +1,80 @@
+name: GCP authentication smoke test
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  authenticate:
+    name: Authenticate with Workload Identity Federation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_SERVICE_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+    steps:
+      - name: Validate required repository variables
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          missing=0
+          for variable in GCP_PROJECT_ID GCP_SERVICE_ACCOUNT GCP_WORKLOAD_IDENTITY_PROVIDER; do
+            if [[ -z "${!variable:-}" ]]; then
+              echo "::error::Repository variable ${variable} is not configured."
+              missing=1
+            fi
+          done
+
+          if (( missing != 0 )); then
+            exit 1
+          fi
+
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ env.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.GCP_SERVICE_ACCOUNT }}
+          create_credentials_file: true
+          export_environment_variables: true
+
+      - name: Setup Google Cloud CLI
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+          version: ">= 363.0.0"
+
+      - name: Verify federated credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Force an actual token exchange and service-account impersonation.
+          gcloud auth print-access-token >/dev/null
+
+          active_account="$(gcloud auth list --filter=status:ACTIVE --format='value(account)')"
+          configured_project="$(gcloud config get-value project 2>/dev/null)"
+
+          if [[ "$active_account" != "$GCP_SERVICE_ACCOUNT" ]]; then
+            echo "::error::Expected active account ${GCP_SERVICE_ACCOUNT}, got ${active_account:-<none>}."
+            exit 1
+          fi
+
+          if [[ "$configured_project" != "$GCP_PROJECT_ID" ]]; then
+            echo "::error::Expected project ${GCP_PROJECT_ID}, got ${configured_project:-<none>}."
+            exit 1
+          fi
+
+          echo "Workload Identity Federation authentication succeeded for ${active_account}."
