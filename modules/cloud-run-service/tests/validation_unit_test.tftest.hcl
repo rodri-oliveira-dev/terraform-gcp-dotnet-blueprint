@@ -35,6 +35,110 @@ run "reject_invalid_scaling_range" {
   ]
 }
 
+run "reject_unsupported_cpu" {
+  command = plan
+
+  variables {
+    resources = {
+      cpu    = "3"
+      memory = "1Gi"
+    }
+  }
+
+  expect_failures = [
+    var.resources,
+  ]
+}
+
+run "reject_memory_below_platform_minimum" {
+  command = plan
+
+  variables {
+    resources = {
+      cpu    = "1"
+      memory = "256Mi"
+    }
+  }
+
+  expect_failures = [
+    var.resources,
+  ]
+}
+
+run "reject_memory_above_platform_maximum" {
+  command = plan
+
+  variables {
+    resources = {
+      cpu    = "8"
+      memory = "64Gi"
+    }
+  }
+
+  expect_failures = [
+    var.resources,
+  ]
+}
+
+run "reject_incompatible_cpu_memory_pair" {
+  command = plan
+
+  variables {
+    resources = {
+      cpu    = "4"
+      memory = "1Gi"
+    }
+  }
+
+  expect_failures = [
+    var.resources,
+  ]
+}
+
+run "reject_reserved_literal_environment_name" {
+  command = plan
+
+  variables {
+    environment_variables = {
+      PORT = "8080"
+    }
+  }
+
+  expect_failures = [
+    var.environment_variables,
+  ]
+}
+
+run "reject_reserved_google_environment_prefix" {
+  command = plan
+
+  variables {
+    environment_variables = {
+      X_GOOGLE_TEST = "value"
+    }
+  }
+
+  expect_failures = [
+    var.environment_variables,
+  ]
+}
+
+run "reject_reserved_secret_environment_name" {
+  command = plan
+
+  variables {
+    secret_environment_variables = {
+      PORT = {
+        secret = "api-port"
+      }
+    }
+  }
+
+  expect_failures = [
+    var.secret_environment_variables,
+  ]
+}
+
 run "reject_duplicate_environment_names" {
   command = plan
 
