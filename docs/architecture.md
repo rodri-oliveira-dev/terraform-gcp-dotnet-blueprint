@@ -1,30 +1,30 @@
-# Architecture Overview
+# Visão geral da arquitetura
 
-## Purpose
+## Propósito
 
-This repository is a production-oriented Terraform reference architecture for .NET workloads on Google Cloud. It separates bootstrap concerns, reusable infrastructure capabilities, environment policy, delivery controls and operational guidance so each layer can evolve without collapsing into one monolithic state.
+Este repositório é uma arquitetura de referência Terraform orientada a produção para workloads .NET no Google Cloud. Ele separa responsabilidades de bootstrap, capacidades reutilizáveis de infraestrutura, políticas de ambiente, controles de entrega e orientação operacional para que cada camada possa evoluir sem colapsar em um único state monolítico.
 
-The blueprint is intentionally opinionated about boundaries and secure defaults, but it is not a universal production template. Capacity, SLOs, public-edge design, organization policy and business-specific controls remain workload decisions.
+O blueprint é intencionalmente opinativo sobre limites e padrões seguros, mas não é um template universal de produção. Capacidade, SLOs, desenho de edge público, políticas organizacionais e controles específicos de negócio permanecem decisões de cada workload.
 
-## Final architecture
+## Arquitetura final
 
 ```mermaid
 flowchart LR
     subgraph GitHub[GitHub]
         PR[Pull request]
-        CI[Credential-free CI]
-        PLAN[Manual plan]
-        APPLY[Controlled apply]
-        OIDC[OIDC token]
+        CI[CI sem credenciais]
+        PLAN[Plan manual]
+        APPLY[Apply controlado]
+        OIDC[Token OIDC]
     end
 
-    subgraph Bootstrap[Bootstrap lifecycle]
-        STATE[(GCS state bucket)]
+    subgraph Bootstrap[Ciclo de vida de bootstrap]
+        STATE[(Bucket GCS de state)]
         WIF[Workload Identity Federation]
-        DEPLOYER[Deployment SA]
+        DEPLOYER[SA de deployment]
     end
 
-    subgraph Env[Environment root: dev or prod]
+    subgraph Env[Root do ambiente: dev ou prod]
         API[Cloud Run API]
         PS[Pub/Sub]
         WORKER[Cloud Run worker]
@@ -35,7 +35,7 @@ flowchart LR
         VPC[VPC + subnet]
         PSA[Private Service Access]
         REDIS[Memorystore Redis]
-        MON[Monitoring alert policies]
+        MON[Políticas de alerta do Monitoring]
     end
 
     PR --> CI
@@ -65,103 +65,103 @@ flowchart LR
     REDIS --> MON
 ```
 
-The major design rule is that control planes stay explicit: Pub/Sub delivers requests to a Cloud Run **service**, while finite batch work is a Cloud Run **job** started through the Run Admin API. The environment roots do not make the API public by default.
+A principal regra de design é manter os control planes explícitos: o Pub/Sub entrega requisições a um Cloud Run **service**, enquanto trabalho batch finito é executado por um Cloud Run **job** iniciado por meio da Run Admin API. Os roots dos ambientes não tornam a API pública por padrão.
 
-## Architectural layers
+## Camadas arquiteturais
 
 ### Bootstrap
 
-`bootstrap/state` owns the protected Cloud Storage bucket used by later Terraform states. It intentionally begins with local state because a backend cannot depend on itself.
+`bootstrap/state` é responsável pelo bucket protegido do Cloud Storage usado pelos demais states Terraform. Ele começa intencionalmente com state local porque um backend não pode depender de si mesmo.
 
-`bootstrap/github-actions-wif` owns the GitHub OIDC trust boundary and dedicated deployment identity. The default trust restricts admission using immutable GitHub owner/repository IDs plus `refs/heads/main`.
+`bootstrap/github-actions-wif` é responsável pelo limite de confiança GitHub OIDC e pela identidade dedicada de deployment. A confiança padrão restringe a admissão usando os IDs imutáveis do owner/repositório GitHub, além de `refs/heads/main`.
 
-Bootstrap has a different lifecycle from application environments and should remain small, reviewed and rarely changed.
+O bootstrap possui ciclo de vida diferente dos ambientes de aplicação e deve permanecer pequeno, revisado e raramente alterado.
 
-### Reusable modules
+### Módulos reutilizáveis
 
-`modules/` contains focused capabilities rather than complete environments:
+`modules/` contém capacidades focadas, e não ambientes completos:
 
-- `cloud-run-service` — one request-serving Cloud Run v2 service;
-- `cloud-run-job` — one finite Cloud Run v2 job;
-- `pubsub` — topic/subscription, retry, DLQ and authenticated push relationships;
-- `runtime-identity` — keyless workload service account;
-- `secret-manager` — secret metadata plus scoped accessor relationships;
-- `vpc-network` — custom VPC, subnet and Private Service Access foundation;
-- `memorystore-redis` — private Redis instance with AUTH/TLS defaults;
-- `observability-alerts` — Cloud Monitoring alert-policy baseline.
+- `cloud-run-service` — um serviço Cloud Run v2 orientado a requisições;
+- `cloud-run-job` — um Cloud Run v2 Job finito;
+- `pubsub` — tópico/subscription, retry, DLQ e relações de push autenticado;
+- `runtime-identity` — service account de workload sem chaves;
+- `secret-manager` — metadados de segredo e relações de acesso com escopo restrito;
+- `vpc-network` — VPC customizada, subnet e fundação de Private Service Access;
+- `memorystore-redis` — instância Redis privada com padrões AUTH/TLS;
+- `observability-alerts` — baseline de políticas de alerta do Cloud Monitoring.
 
-Child modules do not own backends, provider credentials, environment constants or application secret payloads.
+Módulos filhos não são responsáveis por backends, credenciais de provider, constantes de ambiente ou payloads de segredos da aplicação.
 
-### Environment roots
+### Roots de ambiente
 
-`environments/dev` and `environments/prod` compose the same capabilities and own policy differences such as CIDRs, Redis tier/capacity, compute sizing, scaling, retry thresholds and observability thresholds.
+`environments/dev` e `environments/prod` compõem as mesmas capacidades e são responsáveis pelas diferenças de política, como CIDRs, tier/capacidade do Redis, sizing de compute, scaling, thresholds de retry e thresholds de observabilidade.
 
-Each root has its own fixed GCS prefix (`environments/dev` or `environments/prod`). Both use the same two-phase secret bootstrap and one-way workload activation model.
+Cada root possui seu próprio prefixo fixo no GCS (`environments/dev` ou `environments/prod`). Ambos usam o mesmo modelo de bootstrap de segredos em duas fases e ativação unidirecional de workloads.
 
-### Delivery
+### Entrega
 
-Pull-request CI remains credential-free. It runs Terraform formatting, backend-disabled initialization/validation, native tests, TFLint and Trivy.
+O CI de pull requests permanece sem credenciais. Ele executa formatação Terraform, inicialização/validação com backend desabilitado, testes nativos, TFLint e Trivy.
 
-Credentialed operations are manual and restricted to `main`:
+Operações autenticadas são manuais e restritas à `main`:
 
 ```text
 GitHub workflow_dispatch
         |
         v
-GitHub OIDC token
+Token GitHub OIDC
         |
         v
 Workload Identity Federation
         |
         v
-Dedicated deployment service account
+Service account dedicada de deployment
         |
-        +--> GCS backend
-        `--> selected GCP environment
+        +--> backend GCS
+        `--> ambiente GCP selecionado
 ```
 
-The plan workflow never uploads the binary plan/full JSON. The apply workflow requires explicit confirmation, blocks destructive changes by default, uses GitHub Environment protection, replans after approval and compares a fingerprint before applying the fresh saved plan.
+O workflow de plan nunca envia o plan binário ou o JSON completo como artifact. O workflow de apply exige confirmação explícita, bloqueia mudanças destrutivas por padrão, usa proteção de GitHub Environment, refaz o plan após aprovação e compara um fingerprint antes de aplicar o novo saved plan.
 
-See `docs/terraform-deployment.md`.
+Consulte `docs/terraform-deployment.md`.
 
-## Runtime identity and secrets boundary
+## Limite entre identidade de runtime e segredos
 
-API, worker and batch use different runtime service accounts. Pub/Sub push and Cloud Scheduler use different transport/trigger identities from the workloads they invoke.
+API, worker e batch usam service accounts de runtime diferentes. Pub/Sub push e Cloud Scheduler usam identidades de transporte/disparo diferentes dos workloads que invocam.
 
-`modules/secret-manager` grants `roles/secretmanager.secretAccessor` only to explicitly listed identities at individual-secret scope. Terraform creates secret containers and IAM but does not create application secret versions.
+`modules/secret-manager` concede `roles/secretmanager.secretAccessor` apenas às identidades explicitamente listadas, no escopo de cada segredo. O Terraform cria containers de segredos e IAM, mas não cria versões dos segredos da aplicação.
 
-The environment lifecycle therefore has two phases:
+O ciclo de vida do ambiente, portanto, possui duas fases:
 
 ```text
-Foundation apply
-  ├─ network / PSA / Redis
-  ├─ identities
-  ├─ secret containers + IAM
-  └─ required APIs
+Apply da fundação
+  ├─ rede / PSA / Redis
+  ├─ identidades
+  ├─ containers de segredos + IAM
+  └─ APIs necessárias
         |
         v
-External trusted secret-version bootstrap
+Bootstrap externo e confiável das versões dos segredos
         |
         v
-Workload activation
+Ativação dos workloads
   ├─ API
   ├─ worker + Pub/Sub
   ├─ job + Scheduler
-  └─ Monitoring alert policies
+  └─ políticas de alerta do Monitoring
 ```
 
-Redis AUTH and server CA material follow the same rule: payload transfer is an operator/application concern and is not surfaced as Terraform outputs.
+Redis AUTH e material de CA do servidor seguem a mesma regra: a transferência desses payloads é uma responsabilidade do operador/aplicação e eles não são expostos como outputs Terraform.
 
-## Networking boundary
+## Limite de rede
 
-`modules/vpc-network` owns one custom-mode VPC, one regional workload subnet, one allocated PSA range and the Service Networking connection. Cloud Run services/jobs use Direct VPC egress; the blueprint does not create a Serverless VPC Access connector.
+`modules/vpc-network` é responsável por uma VPC em modo customizado, uma subnet regional de workloads, um range PSA alocado e a conexão com Service Networking. Serviços/jobs Cloud Run usam Direct VPC egress; o blueprint não cria Serverless VPC Access connector.
 
 ```text
 Cloud Run service/job
         |
         | Direct VPC egress
         v
-workload subnet / VPC
+subnet de workloads / VPC
         |
         v
 Private Service Access
@@ -170,68 +170,68 @@ Private Service Access
 Memorystore for Redis
 ```
 
-Subnet CIDRs and PSA ranges are separate allocations and must be reviewed against organization routing/address plans before adoption.
+CIDRs da subnet e ranges PSA são alocações separadas e precisam ser revisados em relação aos planos de roteamento/endereçamento da organização antes da adoção.
 
-## Redis boundary
+## Limite do Redis
 
-`modules/memorystore-redis` fixes the connectivity model to `PRIVATE_SERVICE_ACCESS`, enables AUTH and TLS by default, and uses provider-level deletion prevention. `prod` composes `STANDARD_HA`; `dev` intentionally uses `BASIC` to demonstrate a cost-oriented environment policy without weakening AUTH/TLS.
+`modules/memorystore-redis` fixa o modelo de conectividade em `PRIVATE_SERVICE_ACCESS`, habilita AUTH e TLS por padrão e usa prevenção de exclusão no provider. `prod` compõe `STANDARD_HA`; `dev` usa intencionalmente `BASIC` para demonstrar uma política de ambiente orientada a custo sem enfraquecer AUTH/TLS.
 
-State remains sensitive because provider-computed values can persist even when no output exposes them. Backend access is therefore part of the Redis security model.
+O state continua sensível porque valores calculados pelo provider podem persistir mesmo quando nenhum output os expõe. O acesso ao backend, portanto, faz parte do modelo de segurança do Redis.
 
-## Observability boundary
+## Limite de observabilidade
 
-`modules/observability-alerts` owns platform alert policies only. Environment roots supply actual resource names, thresholds and existing notification channel resource names.
+`modules/observability-alerts` é responsável apenas pelas políticas de alerta de plataforma. Os roots de ambiente fornecem nomes reais de recursos, thresholds e nomes de recursos de canais de notificação existentes.
 
-The baseline covers Cloud Run 5xx ratio, Pub/Sub stale backlog/DLQ forwarding, failed Cloud Run Job executions and Redis pressure/rejected connections.
+O baseline cobre taxa de 5xx do Cloud Run, backlog antigo/encaminhamento para DLQ no Pub/Sub, execuções com falha de Cloud Run Jobs e pressão/conexões rejeitadas no Redis.
 
-Application code owns semantic logs, traces, custom metrics and redaction. Notification destinations/secrets are organization-owned concerns outside this Terraform state. SLO targets are not invented by the blueprint.
+O código da aplicação é responsável por logs semânticos, traces, métricas customizadas e redaction. Destinos/segredos de notificação são responsabilidades da organização fora deste state Terraform. O blueprint não inventa metas de SLO.
 
-See `docs/observability.md`.
+Consulte `docs/observability.md`.
 
-## State and recovery boundary
+## Limite de state e recovery
 
-The GCS state bucket uses versioning, uniform bucket-level access, public access prevention, `force_destroy = false` and Terraform `prevent_destroy`. Environment states use isolated prefixes.
+O bucket GCS de state usa versionamento, uniform bucket-level access, prevenção de acesso público, `force_destroy = false` e `prevent_destroy` do Terraform. States de ambiente usam prefixos isolados.
 
-Recovery is an operator procedure, not a CI feature. State restoration, `force-unlock`, state removal/import and lifecycle-protection changes must be deliberate and reviewed. See `bootstrap/state/README.md` and `docs/production-readiness.md`.
+Recovery é um procedimento do operador, não uma funcionalidade de CI. Restauração de state, `force-unlock`, remoção/import de state e mudanças em proteções de lifecycle devem ser deliberadas e revisadas. Consulte `bootstrap/state/README.md` e `docs/production-readiness.md`.
 
-## Validation boundary
+## Limite de validação
 
-There are intentionally two evidence levels:
+Existem intencionalmente dois níveis de evidência:
 
-1. **Offline/contract validation** — PR CI and mocked Terraform tests; no GCP credentials.
-2. **Real-GCP plan validation** — manual WIF-authenticated plan from `main`, real GCS backend and provider/API refresh against `dev`.
+1. **Validação offline/de contrato** — CI de PR e testes Terraform com mocks; sem credenciais GCP.
+2. **Validação de plan em GCP real** — plan manual autenticado via WIF a partir da `main`, backend GCS real e refresh de provider/API contra `dev`.
 
-Neither proves runtime behavior. Issue #29 records the evidence required before claiming the second level has successfully executed. Creating/exercising billable resources is a separate explicitly authorized activity.
+Nenhum dos dois comprova comportamento em runtime. A issue #29 registra a evidência necessária antes de afirmar que o segundo nível foi executado com sucesso. Criar/exercitar recursos com custo é uma atividade separada e explicitamente autorizada.
 
-## Deliberate non-goals
+## Não objetivos deliberados
 
-The v1.0 baseline intentionally does not provide:
+O baseline v1.0 intencionalmente não fornece:
 
-- public API edge/load balancer/API Gateway configuration;
-- custom DNS or managed certificates;
-- Cloud SQL or another relational database;
+- edge público para API/load balancer/API Gateway;
+- DNS customizado ou certificados gerenciados;
+- Cloud SQL ou outro banco relacional;
 - GKE/Kubernetes;
-- Cloud NAT or generic outbound-internet architecture;
-- organization/folder policies;
-- application container builds or business application code;
-- secret payload creation/rotation;
-- universal SLO targets or generic custom dashboards;
-- automatic destructive recovery, state surgery or `terraform destroy` workflows;
-- a claim that the reference sizing is appropriate for an arbitrary production workload.
+- Cloud NAT ou arquitetura genérica de saída para internet;
+- políticas de organização/folder;
+- builds de containers da aplicação ou código de negócio;
+- criação/rotação de payloads de segredos;
+- metas universais de SLO ou dashboards customizados genéricos;
+- recovery destrutivo automático, manipulação de state ou workflows de `terraform destroy`;
+- afirmação de que o sizing de referência é adequado a qualquer workload de produção.
 
-These are extension points, not missing hidden dependencies.
+Estes são pontos de extensão, não dependências ocultas ausentes.
 
-## Security principles
+## Princípios de segurança
 
-- keyless GitHub-to-GCP authentication;
-- least privilege and explicit IAM relationships;
-- separate runtime and transport identities;
-- no application secret payloads in Terraform source/variables;
-- private Redis connectivity, AUTH and TLS;
-- no public invocation by default;
-- sensitive remote state with isolated prefixes and recovery history;
-- credential-free pull-request validation;
-- immutable action pins plus Dependabot maintenance;
-- explicit approval and destructive-change acknowledgement before apply.
+- autenticação GitHub-to-GCP sem chaves;
+- privilégio mínimo e relações IAM explícitas;
+- identidades separadas de runtime e transporte;
+- nenhum payload de segredo da aplicação em source/variáveis Terraform;
+- conectividade privada do Redis, AUTH e TLS;
+- nenhuma invocação pública por padrão;
+- state remoto sensível com prefixos isolados e histórico de recovery;
+- validação de pull requests sem credenciais;
+- pins imutáveis de actions com manutenção via Dependabot;
+- aprovação explícita e confirmação de mudança destrutiva antes do apply.
 
-For adoption sequencing, operational risks and release-readiness criteria, see `docs/production-readiness.md`.
+Para sequência de adoção, riscos operacionais e critérios de prontidão da release, consulte `docs/production-readiness.md`.

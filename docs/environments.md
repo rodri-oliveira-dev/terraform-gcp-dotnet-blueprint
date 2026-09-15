@@ -1,110 +1,110 @@
-# Environment composition
+# Composição dos ambientes
 
-The repository provides two complete root modules under `environments/`:
+O repositório fornece dois root modules completos em `environments/`:
 
-- `environments/dev` for cost-conscious development validation;
-- `environments/prod` for production-oriented availability and sizing defaults.
+- `environments/dev` para validação de desenvolvimento com foco em custo;
+- `environments/prod` com padrões de disponibilidade e sizing orientados a produção.
 
-Both roots compose the same reusable capabilities and keep environment policy in the root rather than leaking it into child modules.
+Os dois roots compõem as mesmas capacidades reutilizáveis e mantêm a política do ambiente no root, em vez de vazá-la para os módulos filhos.
 
-## Shared architecture
+## Arquitetura compartilhada
 
 ```text
 Cloud Run API
     |-- Secret Manager
-    |-- Pub/Sub topic
+    |-- tópico Pub/Sub
     |-- Direct VPC egress --> Memorystore for Redis
 
-Pub/Sub --> authenticated push --> Cloud Run worker
-                                    |-- Secret Manager
-                                    `-- Direct VPC egress --> Redis
+Pub/Sub --> push autenticado --> Cloud Run worker
+                                  |-- Secret Manager
+                                  `-- Direct VPC egress --> Redis
 
 Cloud Scheduler --> OAuth --> Cloud Run Admin API --> Cloud Run Job
                                                    |-- Secret Manager
                                                    `-- Direct VPC egress --> Redis
 
-Cloud Monitoring alert policies
-    |-- Cloud Run 5xx ratio
-    |-- Pub/Sub backlog / DLQ
-    |-- failed Cloud Run Job executions
-    `-- Redis pressure / rejected connections
+Políticas de alerta do Cloud Monitoring
+    |-- taxa de 5xx do Cloud Run
+    |-- backlog / DLQ do Pub/Sub
+    |-- execuções com falha do Cloud Run Job
+    `-- pressão / conexões rejeitadas do Redis
 ```
 
-Runtime identities are separate for API, worker and batch. Pub/Sub push and Cloud Scheduler use separate transport/trigger identities. The API receives publisher access only on its environment-specific topic.
+As identidades de runtime são separadas para API, worker e batch. Pub/Sub push e Cloud Scheduler usam identidades separadas de transporte/disparo. A API recebe permissão de publisher apenas no tópico específico do seu ambiente.
 
 ## Dev versus prod
 
-| Policy | dev | prod |
+| Política | dev | prod |
 | --- | --- | --- |
-| State prefix | `environments/dev` | `environments/prod` |
-| Workload subnet | `10.40.0.0/24` default | `10.60.0.0/24` default |
-| PSA range | `10.50.0.0/16` default | `10.70.0.0/16` default |
-| Redis tier | `BASIC` | `STANDARD_HA` |
-| Redis memory | 1 GiB | 5 GiB default |
+| Prefixo de state | `environments/dev` | `environments/prod` |
+| Subnet de workloads | `10.40.0.0/24` padrão | `10.60.0.0/24` padrão |
+| Range PSA | `10.50.0.0/16` padrão | `10.70.0.0/16` padrão |
+| Tier do Redis | `BASIC` | `STANDARD_HA` |
+| Memória do Redis | 1 GiB | 5 GiB padrão |
 | API | 1 vCPU / 512 MiB, min 0, max 2 | 2 vCPU / 1 GiB, min 1, max 20 |
 | Worker | 1 vCPU / 512 MiB, min 0, max 2 | 1 vCPU / 1 GiB, min 1, max 20 |
-| Pub/Sub DLQ threshold | 10 attempts | 20 attempts |
+| Threshold da DLQ Pub/Sub | 10 tentativas | 20 tentativas |
 | Batch | 1 task, parallelism 1, 1 vCPU / 512 MiB | 4 tasks, parallelism 2, 2 vCPU / 2 GiB |
-| Scheduler retries | 3 | 5 |
-| Cloud Run 5xx alert | 10% | 5% |
-| Pub/Sub oldest unacked age | 600 seconds | 300 seconds |
-| Redis memory alerts | 90% | 80% |
+| Retries do Scheduler | 3 | 5 |
+| Alerta 5xx do Cloud Run | 10% | 5% |
+| Idade da mensagem Pub/Sub não confirmada mais antiga | 600 segundos | 300 segundos |
+| Alertas de memória Redis | 90% | 80% |
 
-These values demonstrate where environment policy belongs. They are reference defaults, not capacity recommendations or contractual SLOs for arbitrary workloads.
+Esses valores demonstram onde a política de ambiente deve ficar. São padrões de referência, não recomendações de capacidade nem SLOs contratuais para workloads arbitrários.
 
-## Two-phase secret bootstrap
+## Bootstrap de segredos em duas fases
 
-Both roots default `enable_workloads = false` because application secret payloads are intentionally outside Terraform and Memorystore generates AUTH/CA material only after creation.
+Os dois roots usam `enable_workloads = false` por padrão porque os payloads de segredos da aplicação ficam intencionalmente fora do Terraform e o Memorystore gera material AUTH/CA somente após a criação.
 
-The supported sequence is:
+A sequência suportada é:
 
-1. initialize the environment backend;
-2. plan/apply the foundation with workloads disabled;
-3. populate versions for the secret IDs returned by `secret_bootstrap` through a trusted process;
-4. set `enable_workloads = true`;
-5. review the full plan;
-6. apply through the controlled delivery path.
+1. inicializar o backend do ambiente;
+2. executar plan/apply da fundação com workloads desabilitados;
+3. popular versões dos IDs de segredos retornados por `secret_bootstrap` por meio de um processo confiável;
+4. definir `enable_workloads = true`;
+5. revisar o plan completo;
+6. aplicar pelo caminho controlado de entrega.
 
-Once workload activation has been applied as `true`, changing it back to `false` is intentionally rejected by the activation lock. The flag is a bootstrap transition, not a general destroy switch.
+Depois que a ativação dos workloads tiver sido aplicada como `true`, mudar de volta para `false` é intencionalmente rejeitado pelo activation lock. A flag é uma transição de bootstrap, não um switch genérico de destroy.
 
-Do not use `terraform -target` as the normal deployment strategy and do not pass secret payloads through Terraform variables.
+Não use `terraform -target` como estratégia normal de deployment e não passe payloads de segredos por variáveis Terraform.
 
-## State isolation
+## Isolamento de state
 
-The same protected GCS bucket may host both roots, but each root has a fixed prefix:
+O mesmo bucket GCS protegido pode hospedar os dois roots, mas cada root possui um prefixo fixo:
 
 ```text
 environments/dev
 environments/prod
 ```
 
-This prevents normal state operations in one root from addressing the other environment's state object.
+Isso impede que operações normais de state em um root atinjam o objeto de state do outro ambiente.
 
-## Deployment workflow
+## Workflow de deployment
 
-Credential-free pull-request CI uses `terraform init -backend=false` and never authenticates to GCP.
+O CI de pull request sem credenciais usa `terraform init -backend=false` e nunca autentica no GCP.
 
-After merge, manual workflows on `main` provide the controlled path:
+Após o merge, workflows manuais na `main` fornecem o caminho controlado:
 
-- **Terraform plan** — WIF-authenticated, initializes the real GCS backend and produces a safe action/address summary without uploading the binary plan;
-- **Terraform apply** — requires explicit environment/confirmation, blocks destructive changes by default, uses GitHub Environment protection, replans after approval and applies only when the plan fingerprint matches.
+- **Terraform plan** — autenticado via WIF, inicializa o backend GCS real e produz um resumo seguro de ações/endereços sem enviar o plan binário;
+- **Terraform apply** — exige ambiente/confirmação explícitos, bloqueia mudanças destrutivas por padrão, usa proteção de GitHub Environment, refaz o plan após aprovação e aplica somente quando o fingerprint do plan corresponde.
 
-See `docs/terraform-deployment.md`.
+Consulte `docs/terraform-deployment.md`.
 
-## Public ingress
+## Ingress público
 
-Neither root grants unauthenticated invocation. The API URI may exist, but a public edge, API Gateway, external load balancer, Cloud Armor, DNS/certificate setup or `allUsers` binding is intentionally outside the v1.0 reference architecture.
+Nenhum root concede invocação não autenticada. A URI da API pode existir, mas edge público, API Gateway, external load balancer, Cloud Armor, configuração de DNS/certificados ou binding `allUsers` ficam intencionalmente fora da arquitetura de referência v1.0.
 
-Public exposure should be a separate explicit architectural decision.
+A exposição pública deve ser uma decisão arquitetural separada e explícita.
 
-## Observability
+## Observabilidade
 
-Both environment roots enable `monitoring.googleapis.com` and compose `modules/observability-alerts` when workloads are active.
+Os dois roots de ambiente habilitam `monitoring.googleapis.com` e compõem `modules/observability-alerts` quando os workloads estão ativos.
 
-The signal set is shared while thresholds differ by environment. Notification destinations are injected as existing Cloud Monitoring notification channel resource names and remain outside this state.
+O conjunto de sinais é compartilhado, enquanto os thresholds diferem por ambiente. Destinos de notificação são injetados como nomes de recursos de canais existentes do Cloud Monitoring e permanecem fora deste state.
 
-Application structured logging/tracing semantics, product SLIs/SLOs and burn-rate policy remain workload responsibilities. See `docs/observability.md`.
+Semântica de logging/tracing estruturado da aplicação, SLIs/SLOs de produto e política de burn-rate continuam sendo responsabilidades do workload. Consulte `docs/observability.md`.
 
-## Operational guidance
+## Orientação operacional
 
-For bootstrap order, IAM/secrets boundaries, state recovery, deletion protection, adoption checklist and release-readiness guidance, see `docs/production-readiness.md`. For common failure modes, see `docs/troubleshooting.md`.
+Para ordem de bootstrap, limites de IAM/segredos, recovery de state, proteção contra exclusão, checklist de adoção e orientação de prontidão da release, consulte `docs/production-readiness.md`. Para modos de falha comuns, consulte `docs/troubleshooting.md`.

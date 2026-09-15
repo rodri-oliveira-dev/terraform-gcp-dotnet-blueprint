@@ -1,63 +1,63 @@
-# Controlled Terraform deployment with GitHub Actions
+# Deployment Terraform controlado com GitHub Actions
 
-Issue #28 closes the delivery loop for the blueprint without weakening pull-request validation. Ordinary PR CI remains credential-free; credentialed Terraform operations are manual, run from `main`, and authenticate to Google Cloud through Workload Identity Federation (WIF).
+A issue #28 fecha o ciclo de entrega do blueprint sem enfraquecer a validação de pull requests. O CI comum de PR permanece sem credenciais; operações Terraform autenticadas são manuais, executadas a partir da `main` e autenticam no Google Cloud por Workload Identity Federation (WIF).
 
-## Workflow boundary
+## Limite dos workflows
 
-Two workflows intentionally separate review from mutation:
+Três workflows separam intencionalmente validação, revisão e mutação:
 
-| Workflow | Trigger | Cloud credentials | Mutation |
+| Workflow | Trigger | Credenciais cloud | Mutação |
 | --- | --- | --- | --- |
-| `Terraform CI` | PR / push to `main` | none | never |
-| `Terraform plan` | manual `workflow_dispatch` | WIF | never |
-| `Terraform apply` | manual `workflow_dispatch` | WIF | only after plan checks and environment gate |
+| `Terraform CI` | PR / push para `main` | nenhuma | nunca |
+| `Terraform plan` | `workflow_dispatch` manual | WIF | nunca |
+| `Terraform apply` | `workflow_dispatch` manual | WIF | somente após verificações do plan e gate do ambiente |
 
-Neither deployment workflow runs on `pull_request`. Both reject execution from any ref other than `refs/heads/main`, matching the default trust condition provisioned by `bootstrap/github-actions-wif`.
+Nenhum workflow de deployment executa em `pull_request`. Ambos rejeitam execução a partir de qualquer ref diferente de `refs/heads/main`, correspondendo à condição de confiança padrão provisionada por `bootstrap/github-actions-wif`.
 
-## Required repository variables
+## Variáveis obrigatórias do repositório
 
-The deployment workflows intentionally use GitHub **repository variables**, not repository secrets, for public identifiers and reviewed configuration values.
+Os workflows de deployment usam intencionalmente **repository variables** do GitHub, e não repository secrets, para identificadores públicos e valores de configuração revisados.
 
 Configure:
 
-| Variable | Purpose |
+| Variável | Finalidade |
 | --- | --- |
-| `GCP_WORKLOAD_IDENTITY_PROVIDER` | full WIF provider resource name from `bootstrap/github-actions-wif` |
-| `GCP_SERVICE_ACCOUNT` | deployment service account e-mail impersonated through WIF |
-| `GCP_TERRAFORM_STATE_BUCKET` | protected GCS bucket that stores Terraform state |
-| `GCP_DEV_PROJECT_ID` | Google Cloud project targeted by `environments/dev` |
-| `GCP_PROD_PROJECT_ID` | Google Cloud project targeted by `environments/prod` |
-| `TF_DEV_API_IMAGE` | development API container image URI |
-| `TF_DEV_WORKER_IMAGE` | development worker image URI |
-| `TF_DEV_BATCH_IMAGE` | development batch image URI |
-| `TF_DEV_ENABLE_WORKLOADS` | exact string `true` or `false` matching the desired development activation state |
-| `TF_PROD_API_IMAGE` | production API container image URI |
-| `TF_PROD_WORKER_IMAGE` | production worker image URI |
-| `TF_PROD_BATCH_IMAGE` | production batch image URI |
-| `TF_PROD_ENABLE_WORKLOADS` | exact string `true` or `false` matching the desired production activation state |
+| `GCP_WORKLOAD_IDENTITY_PROVIDER` | nome completo do recurso do provider WIF em `bootstrap/github-actions-wif` |
+| `GCP_SERVICE_ACCOUNT` | e-mail da service account de deployment impersonada via WIF |
+| `GCP_TERRAFORM_STATE_BUCKET` | bucket GCS protegido que armazena o state Terraform |
+| `GCP_DEV_PROJECT_ID` | projeto Google Cloud alvo de `environments/dev` |
+| `GCP_PROD_PROJECT_ID` | projeto Google Cloud alvo de `environments/prod` |
+| `TF_DEV_API_IMAGE` | URI da imagem do container da API de desenvolvimento |
+| `TF_DEV_WORKER_IMAGE` | URI da imagem do worker de desenvolvimento |
+| `TF_DEV_BATCH_IMAGE` | URI da imagem batch de desenvolvimento |
+| `TF_DEV_ENABLE_WORKLOADS` | string exata `true` ou `false` correspondente ao estado desejado de ativação em desenvolvimento |
+| `TF_PROD_API_IMAGE` | URI da imagem do container da API de produção |
+| `TF_PROD_WORKER_IMAGE` | URI da imagem do worker de produção |
+| `TF_PROD_BATCH_IMAGE` | URI da imagem batch de produção |
+| `TF_PROD_ENABLE_WORKLOADS` | string exata `true` ou `false` correspondente ao estado desejado de ativação em produção |
 
-The selector script maps only the chosen environment to `TF_VAR_*` variables. It validates required inputs and rejects multiline values before exporting them to the runner environment.
+O script seletor mapeia somente o ambiente escolhido para variáveis `TF_VAR_*`. Ele valida entradas obrigatórias e rejeita valores multilinha antes de exportá-los para o ambiente do runner.
 
-`enable_workloads` is deliberately explicit. The environment roots implement one-way workload activation, so the workflow must not silently fall back to `false` after an environment has been activated.
+`enable_workloads` é deliberadamente explícito. Os roots implementam ativação unidirecional dos workloads, portanto o workflow não pode silenciosamente cair para `false` depois que um ambiente tiver sido ativado.
 
 ## GitHub Environments
 
-Create GitHub Environments named exactly:
+Crie GitHub Environments com estes nomes exatos:
 
 - `dev`
 - `prod`
 
-The apply job references the selected environment. Configure **Required reviewers** on `prod` and enable **Prevent self-review** when your repository governance permits it. The production apply runner does not start until the configured environment protection rules pass.
+O job de apply referencia o ambiente selecionado. Configure **Required reviewers** em `prod` e habilite **Prevent self-review** quando a governança do repositório permitir. O runner de apply de produção não inicia até que as regras de proteção do ambiente sejam satisfeitas.
 
-The `dev` environment can remain unprotected or use a lighter approval policy, depending on the team.
+O ambiente `dev` pode permanecer sem proteção ou usar uma política de aprovação mais leve, conforme o time.
 
-Environment secrets are not required by this design. WIF identifiers and deployment configuration remain repository variables, while the environment is used as a deployment protection boundary and audit record.
+Environment secrets não são exigidos por este desenho. Identificadores WIF e configuração de deployment permanecem repository variables, enquanto o Environment é usado como limite de proteção de deployment e registro de auditoria.
 
-## WIF trust model
+## Modelo de confiança WIF
 
-`bootstrap/github-actions-wif` already constrains federation by immutable GitHub owner/repository IDs and, by default, `refs/heads/main`.
+`bootstrap/github-actions-wif` já restringe a federação por IDs imutáveis de owner/repositório GitHub e, por padrão, `refs/heads/main`.
 
-Each credentialed job grants only:
+Cada job autenticado concede apenas:
 
 ```yaml
 permissions:
@@ -65,139 +65,139 @@ permissions:
   id-token: write
 ```
 
-The workflows use the existing pinned `google-github-actions/auth` action. No service-account key, JSON key secret, or long-lived Google Cloud credential is introduced.
+Os workflows usam a action `google-github-actions/auth` já fixada. Nenhuma chave de service account, JSON key secret ou credencial Google Cloud de longa duração é introduzida.
 
-The generated `gha-creds-*.json` file is ephemeral and already ignored by the repository.
+O arquivo gerado `gha-creds-*.json` é efêmero e já é ignorado pelo repositório.
 
-## Deployment identity permissions
+## Permissões da identidade de deployment
 
-The WIF bootstrap intentionally creates the deployment service account with no workload project permissions by default. Before using the deployment workflows, an operator must grant the deployer the permissions required by the selected environment.
+O bootstrap WIF cria intencionalmente a service account de deployment sem permissões de projeto dos workloads por padrão. Antes de usar os workflows de deployment, um operador deve conceder ao deployer as permissões necessárias ao ambiente selecionado.
 
-For this blueprint, the permission boundary includes:
+Para este blueprint, o limite de permissões inclui:
 
-- reading/writing the GCS backend objects for the environment state prefix;
-- enabling required project APIs;
-- creating/updating VPC and Private Service Access resources;
-- managing Memorystore for Redis;
-- creating runtime/transport service accounts and the resource-scoped IAM relationships declared by the roots/modules;
-- managing Cloud Run services/jobs;
-- managing Pub/Sub resources and their IAM;
-- managing Secret Manager metadata and secret-level IAM (not secret payload versions);
-- managing Cloud Scheduler jobs;
-- managing Cloud Monitoring alert policies.
+- leitura/escrita dos objetos do backend GCS para o prefixo de state do ambiente;
+- habilitação das APIs necessárias do projeto;
+- criação/atualização de VPC e Private Service Access;
+- gerenciamento do Memorystore for Redis;
+- criação de service accounts de runtime/transporte e das relações IAM com escopo de recurso declaradas pelos roots/módulos;
+- gerenciamento de Cloud Run services/jobs;
+- gerenciamento de recursos Pub/Sub e seu IAM;
+- gerenciamento de metadados do Secret Manager e IAM no escopo de segredo (não versões de payload);
+- gerenciamento de jobs do Cloud Scheduler;
+- gerenciamento de políticas de alerta do Cloud Monitoring.
 
-A predefined-role deployment commonly starts from capability-specific roles such as `roles/serviceusage.serviceUsageAdmin`, `roles/compute.networkAdmin`, `roles/servicenetworking.networksAdmin`, `roles/redis.admin`, `roles/iam.serviceAccountAdmin`, `roles/iam.serviceAccountUser`, `roles/run.admin`, `roles/pubsub.admin`, `roles/secretmanager.admin`, `roles/cloudscheduler.admin`, `roles/monitoring.editor`, plus read access such as `roles/browser` where required.
+Um deployment baseado em roles predefinidas normalmente começa por roles específicas de capacidade como `roles/serviceusage.serviceUsageAdmin`, `roles/compute.networkAdmin`, `roles/servicenetworking.networksAdmin`, `roles/redis.admin`, `roles/iam.serviceAccountAdmin`, `roles/iam.serviceAccountUser`, `roles/run.admin`, `roles/pubsub.admin`, `roles/secretmanager.admin`, `roles/cloudscheduler.admin`, `roles/monitoring.editor`, além de acesso de leitura como `roles/browser` quando necessário.
 
-The state bucket should grant the deployment service account object access at bucket scope (for example `roles/storage.objectAdmin`) rather than broad project-wide Storage administration.
+O bucket de state deve conceder à service account de deployment acesso a objetos no escopo do bucket (por exemplo, `roles/storage.objectAdmin`) em vez de administração ampla de Storage no projeto inteiro.
 
-Treat that role list as a reference capability map, not a universal least-privilege prescription. Organizations with stricter requirements should derive a custom role from the actual Terraform permission set. Never use `roles/owner` or `roles/editor` as a shortcut.
+Trate essa lista de roles como um mapa de capacidades de referência, não como prescrição universal de least privilege. Organizações com requisitos mais rígidos devem derivar uma custom role a partir do conjunto real de permissões Terraform. Nunca use `roles/owner` ou `roles/editor` como atalho.
 
-If `dev`, `prod`, the state bucket, and the WIF provider live in different projects, grant the deployment service account access independently in each target project/resource. The identity can be hosted in one project and receive IAM in another.
+Se `dev`, `prod`, o bucket de state e o provider WIF estiverem em projetos diferentes, conceda acesso à service account de deployment independentemente em cada projeto/recurso alvo. A identidade pode estar hospedada em um projeto e receber IAM em outro.
 
-## Manual plan workflow
+## Workflow manual de plan
 
-Run **Terraform plan** from the Actions tab and choose `dev` or `prod`.
+Execute **Terraform plan** pela aba Actions e escolha `dev` ou `prod`.
 
-The workflow:
+O workflow:
 
-1. verifies that the selected ref is `main`;
-2. validates repository variables for the selected environment;
-3. checks out the repository without persisting the GitHub token;
-4. authenticates through WIF;
-5. initializes `environments/dev` or `environments/prod` against `GCP_TERRAFORM_STATE_BUCKET` with the root's fixed backend prefix;
-6. creates a saved plan on the ephemeral runner;
-7. publishes only resource/output addresses and action types to the GitHub Job Summary;
-8. computes a SHA-256 fingerprint from the complete Terraform JSON plan;
-9. discards the runner and its plan file when the job ends.
+1. verifica que a ref selecionada é `main`;
+2. valida as variáveis de repositório do ambiente selecionado;
+3. faz checkout sem persistir o token GitHub;
+4. autentica por WIF;
+5. inicializa `environments/dev` ou `environments/prod` contra `GCP_TERRAFORM_STATE_BUCKET` usando o prefixo fixo do backend do root;
+6. cria um saved plan no runner efêmero;
+7. publica somente endereços de recursos/outputs e tipos de ação no GitHub Job Summary;
+8. calcula um fingerprint SHA-256 a partir do JSON completo do plan Terraform;
+9. descarta o runner e seu plan ao final do job.
 
-The full binary plan and full JSON plan are **not** uploaded as artifacts. Terraform plan files can contain sensitive state-derived data even when the human-readable CLI output redacts it.
+O plan binário completo e o plan JSON completo **não** são enviados como artifacts. Arquivos de plan Terraform podem conter dados sensíveis derivados do state mesmo quando a saída CLI legível por humanos os mascara.
 
-For the development environment, this workflow is also the authoritative real-GCP validation path defined by issue #29. See `gcp-integration-validation.md` for the evidence required before that issue can be considered complete and for the exact boundary between a successful real plan and behavior that still requires an explicitly authorized deployment.
+Para o ambiente de desenvolvimento, este workflow também é o caminho oficial de validação em GCP real definido pela issue #29. Consulte `gcp-integration-validation.md` para a evidência exigida antes de considerar essa issue concluída e para o limite exato entre um plan real bem-sucedido e comportamentos que ainda exigem deployment explicitamente autorizado.
 
-## Manual apply workflow
+## Workflow manual de apply
 
-Run **Terraform apply** only after an independent plan has been reviewed or when intentionally starting a controlled deployment run.
+Execute **Terraform apply** somente depois que um plan independente tiver sido revisado ou quando iniciar intencionalmente um deployment controlado.
 
-Inputs are:
+As entradas são:
 
-- `environment`: `dev` or `prod`;
-- `confirmation`: must be exactly `apply-dev` or `apply-prod`;
-- `allow_destroy`: defaults to `false`.
+- `environment`: `dev` ou `prod`;
+- `confirmation`: deve ser exatamente `apply-dev` ou `apply-prod`;
+- `allow_destroy`: padrão `false`.
 
-The workflow first creates a pre-approval plan and publishes the same safe summary. If that plan contains a delete action (including replacement), the run stops unless `allow_destroy=true` was explicitly selected.
+O workflow primeiro cria um plan pré-aprovação e publica o mesmo resumo seguro. Se esse plan contiver uma ação de delete (incluindo replacement), o run para a menos que `allow_destroy=true` tenha sido selecionado explicitamente.
 
-When changes exist, the apply job references the selected GitHub Environment. For `prod`, this is the approval boundary described above.
+Quando existem mudanças, o job de apply referencia o GitHub Environment selecionado. Para `prod`, este é o limite de aprovação descrito acima.
 
-After environment approval, the apply job does **not** consume an uploaded binary plan. Instead it:
+Após a aprovação do ambiente, o job de apply **não** consome um plan binário enviado anteriormente. Em vez disso:
 
-1. authenticates again through WIF;
-2. initializes the same remote state;
-3. creates a fresh saved plan on the approved runner;
-4. recomputes the SHA-256 fingerprint of the complete JSON plan;
-5. compares that fingerprint with the pre-approval fingerprint;
-6. rechecks the destructive-change policy;
-7. applies only the fresh saved plan when the fingerprints match exactly.
+1. autentica novamente por WIF;
+2. inicializa o mesmo state remoto;
+3. cria um novo saved plan no runner aprovado;
+4. recalcula o fingerprint SHA-256 do JSON completo do plan;
+5. compara esse fingerprint com o fingerprint pré-aprovação;
+6. verifica novamente a política de mudanças destrutivas;
+7. aplica somente o novo saved plan quando os fingerprints correspondem exatamente.
 
-If state, data sources, configuration, or planned values changed while approval was pending, the fingerprints differ and nothing is applied. Start a new run and review the new plan.
+Se state, data sources, configuração ou valores planejados mudarem enquanto a aprovação estiver pendente, os fingerprints serão diferentes e nada será aplicado. Inicie um novo run e revise o novo plan.
 
-This avoids persisting a potentially sensitive binary plan while still preventing a stale approval from being reused for a materially different Terraform plan.
+Isso evita persistir um plan binário potencialmente sensível e ao mesmo tempo impede reutilizar uma aprovação antiga para um plan Terraform materialmente diferente.
 
-## Destructive operations
+## Operações destrutivas
 
-`allow_destroy=false` is the default. Terraform replacements include a `delete` action, so they are also blocked unless the dispatcher explicitly opts in.
+`allow_destroy=false` é o padrão. Replacements Terraform incluem uma ação `delete`, portanto também são bloqueados a menos que quem disparou o workflow faça opt-in explicitamente.
 
-`allow_destroy=true` does not bypass:
+`allow_destroy=true` não ignora:
 
-- Terraform lifecycle protections;
-- Cloud Run / Redis deletion protection;
-- the workload activation lock;
-- GitHub Environment approval;
-- the plan fingerprint check.
+- proteções de lifecycle Terraform;
+- proteção contra exclusão do Cloud Run / Redis;
+- workload activation lock;
+- aprovação do GitHub Environment;
+- verificação do fingerprint do plan.
 
-It only acknowledges that the reviewed plan legitimately contains delete/replacement actions.
+Ele apenas confirma que o plan revisado contém legitimamente ações de delete/replacement.
 
-## Two-phase environment bootstrap
+## Bootstrap dos ambientes em duas fases
 
-The deployment workflow preserves the existing secret bootstrap contract.
+O workflow de deployment preserva o contrato existente de bootstrap de segredos.
 
-For a new environment:
+Para um novo ambiente:
 
-1. set `TF_<ENV>_ENABLE_WORKLOADS=false`;
-2. run plan/apply to create foundation resources, identities, Redis, Secret Manager containers and IAM;
-3. populate the secret versions through the trusted external process described by the environment README;
-4. change `TF_<ENV>_ENABLE_WORKLOADS=true`;
-5. run a new plan and review workload creation;
-6. run the controlled apply flow.
+1. defina `TF_<ENV>_ENABLE_WORKLOADS=false`;
+2. execute plan/apply para criar recursos de fundação, identidades, Redis, containers do Secret Manager e IAM;
+3. popule as versões dos segredos pelo processo externo confiável descrito no README do ambiente;
+4. altere `TF_<ENV>_ENABLE_WORKLOADS=true`;
+5. execute um novo plan e revise a criação dos workloads;
+6. execute o fluxo de apply controlado.
 
-Do not put Redis AUTH, Redis CA, application configuration, or other secret payloads in GitHub repository variables.
+Não coloque Redis AUTH, Redis CA, configuração de aplicação ou outros payloads de segredos em repository variables do GitHub.
 
-## Rollback and recovery
+## Rollback e recovery
 
-Terraform deployment rollback is not implemented as an automatic `git revert && apply` mechanism. Reverting configuration can itself destroy or replace resources.
+Rollback de deployment Terraform não é implementado como mecanismo automático `git revert && apply`. Reverter configuração pode por si só destruir ou substituir recursos.
 
-For an infrastructure regression:
+Para uma regressão de infraestrutura:
 
-1. stop further deployments to the affected environment;
-2. inspect the current remote state and the last known-good Git commit;
-3. prepare the corrective configuration change;
-4. run the manual plan workflow against that commit after it is merged to `main`;
-5. inspect replacements/deletions explicitly;
-6. use the controlled apply workflow only after review/approval.
+1. interrompa novos deployments no ambiente afetado;
+2. inspecione o state remoto atual e o último commit Git conhecido como bom;
+3. prepare a correção de configuração;
+4. execute o workflow manual de plan contra esse commit depois que ele estiver mergeado na `main`;
+5. inspecione explicitamente replacements/deletions;
+6. use o workflow de apply controlado somente após revisão/aprovação.
 
-For state corruption or accidental state changes, follow `bootstrap/state/README.md` and use GCS object version history. Do not automate `force-unlock`, state removal, or state restoration in these workflows.
+Para corrupção de state ou alterações acidentais de state, siga `bootstrap/state/README.md` e use o histórico de versões dos objetos GCS. Não automatize `force-unlock`, remoção ou restauração de state nestes workflows.
 
-## Relationship to issue #26
+## Relação com a issue #26
 
-Issue #26 expands Dependabot coverage to Terraform providers/modules. It does not change this deployment trust model. Provider/module update PRs continue through credential-free Terraform CI; after merge, any real environment plan is still a separate manual WIF-authenticated action.
+A issue #26 amplia a cobertura do Dependabot para providers/módulos Terraform. Ela não altera este modelo de confiança de deployment. PRs de atualização de provider/módulo continuam passando pelo CI Terraform sem credenciais; depois do merge, qualquer plan de ambiente real permanece uma ação manual separada e autenticada via WIF.
 
-## What CI validates
+## O que o CI valida
 
-Pull requests continue to run:
+Pull requests continuam executando:
 
 - `terraform fmt -check -recursive -diff`;
-- `terraform init -backend=false` and `terraform validate`;
+- `terraform init -backend=false` e `terraform validate`;
 - `terraform test`;
 - TFLint;
-- Trivy IaC scanning.
+- scan IaC com Trivy.
 
-No deployment workflow is automatically dispatched by a PR. Real-GCP validation is an explicit manual action from `main`, and ordinary PR CI does not obtain Google Cloud credentials.
+Nenhum workflow de deployment é disparado automaticamente por um PR. A validação em GCP real é uma ação manual explícita a partir da `main`, e o CI comum de PR não obtém credenciais Google Cloud.
