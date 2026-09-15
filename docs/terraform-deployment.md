@@ -28,11 +28,11 @@ Configure:
 | `GCP_DEV_PROJECT_ID` | Google Cloud project targeted by `environments/dev` |
 | `GCP_PROD_PROJECT_ID` | Google Cloud project targeted by `environments/prod` |
 | `TF_DEV_API_IMAGE` | development API container image URI |
-| `TF_DEV_WORKER_IMAGE` | development worker container image URI |
+| `TF_DEV_WORKER_IMAGE` | development worker image URI |
 | `TF_DEV_BATCH_IMAGE` | development batch image URI |
 | `TF_DEV_ENABLE_WORKLOADS` | exact string `true` or `false` matching the desired development activation state |
 | `TF_PROD_API_IMAGE` | production API container image URI |
-| `TF_PROD_WORKER_IMAGE` | production worker container image URI |
+| `TF_PROD_WORKER_IMAGE` | production worker image URI |
 | `TF_PROD_BATCH_IMAGE` | production batch image URI |
 | `TF_PROD_ENABLE_WORKLOADS` | exact string `true` or `false` matching the desired production activation state |
 
@@ -111,6 +111,8 @@ The workflow:
 9. discards the runner and its plan file when the job ends.
 
 The full binary plan and full JSON plan are **not** uploaded as artifacts. Terraform plan files can contain sensitive state-derived data even when the human-readable CLI output redacts it.
+
+For the development environment, this workflow is also the authoritative real-GCP validation path defined by issue #29. See `gcp-integration-validation.md` for the evidence required before that issue can be considered complete and for the exact boundary between a successful real plan and behavior that still requires an explicitly authorized deployment.
 
 ## Manual apply workflow
 
@@ -198,4 +200,4 @@ Pull requests continue to run:
 - TFLint;
 - Trivy IaC scanning.
 
-No deployment workflow is automatically dispatched by a PR, and implementing issue #28 does not execute `terraform apply`, `terraform destroy`, or any live Google Cloud mutation.
+No deployment workflow is automatically dispatched by a PR. Real-GCP validation is an explicit manual action from `main`, and ordinary PR CI does not obtain Google Cloud credentials.
