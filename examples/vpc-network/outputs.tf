@@ -1,5 +1,5 @@
 output "direct_vpc" {
-  description = "Network and subnet names reserved for Cloud Run Direct VPC egress composition in issue #19 part 2."
+  description = "Network and subnet names that can be passed directly to modules/cloud-run-service.direct_vpc or modules/cloud-run-job.direct_vpc."
   value       = module.network.direct_vpc
 }
 
