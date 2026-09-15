@@ -10,6 +10,8 @@ batch_image  = "us-docker.pkg.dev/PROJECT/containers/batch:prod"
 
 # Phase 1: keep false while the network/cache/identities/secret metadata are
 # created and the required Secret Manager versions are populated externally.
+# After applying true once in this state, do not change this back to false:
+# an activation lock intentionally rejects that plan before workload deletion.
 enable_workloads = false
 
 subnet_ip_cidr_range        = "10.60.0.0/24"
