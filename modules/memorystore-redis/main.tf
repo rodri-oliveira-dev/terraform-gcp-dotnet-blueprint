@@ -1,22 +1,22 @@
 resource "google_redis_instance" "this" {
-  project       = var.project_id
-  name          = var.name
-  region        = var.region
-  display_name  = var.display_name
+  project        = var.project_id
+  name           = var.name
+  region         = var.region
+  display_name   = var.display_name
   memory_size_gb = var.memory_size_gb
-  tier          = var.tier
+  tier           = var.tier
 
   authorized_network = var.authorized_network
   connect_mode       = "PRIVATE_SERVICE_ACCESS"
 
-  redis_version            = var.redis_version
-  auth_enabled             = var.auth_enabled
-  transit_encryption_mode  = var.transit_encryption_mode
-  location_id              = var.location_id
-  alternative_location_id  = var.alternative_location_id
-  redis_configs             = var.redis_configs
-  labels                    = var.labels
-  deletion_policy           = var.deletion_policy
+  redis_version           = var.redis_version
+  auth_enabled            = var.auth_enabled
+  transit_encryption_mode = var.transit_encryption_mode
+  location_id             = var.location_id
+  alternative_location_id = var.alternative_location_id
+  redis_configs            = var.redis_configs
+  labels                   = var.labels
+  deletion_policy          = var.deletion_policy
 
   lifecycle {
     precondition {
