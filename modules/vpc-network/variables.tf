@@ -76,9 +76,10 @@ variable "subnet_ip_cidr_range" {
     condition = (
       can(cidrnetmask(var.subnet_ip_cidr_range)) &&
       try(tonumber(split("/", var.subnet_ip_cidr_range)[1]), 99) >= 4 &&
-      try(tonumber(split("/", var.subnet_ip_cidr_range)[1]), 99) <= 29
+      try(tonumber(split("/", var.subnet_ip_cidr_range)[1]), 99) <= 29 &&
+      try(cidrhost(var.subnet_ip_cidr_range, 0), "") == try(split("/", var.subnet_ip_cidr_range)[0], "invalid")
     )
-    error_message = "subnet_ip_cidr_range must be a valid IPv4 CIDR block with a prefix length from /4 through /29."
+    error_message = "subnet_ip_cidr_range must be a canonical IPv4 network CIDR with a prefix length from /4 through /29, for example 10.20.0.0/24."
   }
 }
 
@@ -110,9 +111,10 @@ variable "private_service_access_cidr" {
     condition = (
       can(cidrnetmask(var.private_service_access_cidr)) &&
       try(tonumber(split("/", var.private_service_access_cidr)[1]), 99) >= 8 &&
-      try(tonumber(split("/", var.private_service_access_cidr)[1]), 99) <= 24
+      try(tonumber(split("/", var.private_service_access_cidr)[1]), 99) <= 24 &&
+      try(cidrhost(var.private_service_access_cidr, 0), "") == try(split("/", var.private_service_access_cidr)[0], "invalid")
     )
-    error_message = "private_service_access_cidr must be a valid IPv4 CIDR block with a prefix length from /8 through /24."
+    error_message = "private_service_access_cidr must be a canonical IPv4 network CIDR with a prefix length from /8 through /24, for example 10.30.0.0/16."
   }
 }
 
