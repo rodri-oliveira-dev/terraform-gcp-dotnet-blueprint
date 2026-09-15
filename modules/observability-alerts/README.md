@@ -1,24 +1,24 @@
-# Cloud Monitoring alert defaults module
+# Módulo de padrões de alerta do Cloud Monitoring
 
-This module owns a focused set of Cloud Monitoring alert policies for the reference .NET runtime architecture. It consumes identifiers for infrastructure that already exists and creates no application workloads, notification destinations, dashboards, log-based metrics, or SLO resources.
+Este módulo é responsável por um conjunto focado de políticas de alerta do Cloud Monitoring para a arquitetura .NET de referência. Ele consome identificadores de infraestrutura já existente e não cria workloads da aplicação, destinos de notificação, dashboards, métricas baseadas em log nem recursos SLO.
 
-## What it monitors
+## O que monitora
 
-When the corresponding target is supplied, the module creates policies for:
+Quando o alvo correspondente é fornecido, o módulo cria políticas para:
 
-- **Cloud Run services** — sustained HTTP 5xx ratio using `run.googleapis.com/request_count`, with a 5% default threshold over five minutes;
-- **Pub/Sub primary subscription** — oldest unacknowledged message age using `pubsub.googleapis.com/subscription/oldest_unacked_message_age`;
-- **Pub/Sub dead-letter forwarding** — any forwarded undeliverable message using `pubsub.googleapis.com/subscription/dead_letter_message_count`;
-- **Cloud Run Job** — completed executions whose `result` label is `failed` using `run.googleapis.com/job/completed_execution_count`;
-- **Memorystore for Redis** — data-memory and system-memory pressure plus rejected client connections.
+- **Cloud Run Services** — taxa HTTP 5xx sustentada usando `run.googleapis.com/request_count`, com threshold padrão de 5% por cinco minutos;
+- **subscription principal Pub/Sub** — idade da mensagem não confirmada mais antiga usando `pubsub.googleapis.com/subscription/oldest_unacked_message_age`;
+- **encaminhamento dead-letter do Pub/Sub** — qualquer mensagem não entregável encaminhada usando `pubsub.googleapis.com/subscription/dead_letter_message_count`;
+- **Cloud Run Job** — execuções concluídas cujo label `result` é `failed`, usando `run.googleapis.com/job/completed_execution_count`;
+- **Memorystore for Redis** — pressão de memória de dados/sistema e conexões rejeitadas.
 
-The defaults are intentionally infrastructure-oriented signals. They are not universal application SLOs and should be tuned using real traffic, workload behavior, and error budgets.
+Os defaults são sinais orientados à infraestrutura, não SLOs universais da aplicação, e devem ser ajustados com tráfego real, comportamento dos workloads e error budgets.
 
-## Notification boundary
+## Limite de notificação
 
-The module never creates `google_monitoring_notification_channel` resources and never accepts e-mail addresses, Slack tokens, webhook secrets, PagerDuty keys, or similar destination configuration.
+O módulo nunca cria `google_monitoring_notification_channel` e nunca aceita e-mails, Slack tokens, webhook secrets, PagerDuty keys ou configuração similar de destino.
 
-Callers may supply existing channel resource names:
+Callers podem fornecer nomes de recursos de canais existentes:
 
 ```hcl
 notification_channels = [
@@ -26,9 +26,9 @@ notification_channels = [
 ]
 ```
 
-An empty set is valid. Policies still exist and produce incidents in Cloud Monitoring, but no external channel is notified until a caller attaches one.
+Conjunto vazio é válido. As políticas continuam existindo e gerando incidents no Cloud Monitoring, mas nenhum canal externo é notificado até um caller anexá-lo.
 
-## Example
+## Exemplo
 
 ```hcl
 module "alerts" {
@@ -53,45 +53,45 @@ module "alerts" {
 
 ## Thresholds
 
-The portable defaults are:
+Defaults portáveis:
 
-| Signal | Default | Evaluation |
+| Sinal | Padrão | Avaliação |
 | --- | ---: | --- |
-| Cloud Run 5xx ratio | 5% | sustained for 5 minutes |
-| Pub/Sub oldest unacked message | 300 seconds | sustained for 5 minutes |
-| Redis data memory usage | 80% | sustained for 5 minutes |
-| Redis system memory usage | 80% | sustained for 5 minutes |
-| Pub/Sub dead-letter forwarding | any message | event-oriented |
-| Cloud Run Job failed execution | any failed execution | event-oriented |
-| Redis rejected connections | any rejected connection | event-oriented |
+| Taxa 5xx Cloud Run | 5% | sustentada por 5 minutos |
+| Mensagem Pub/Sub não confirmada mais antiga | 300 segundos | sustentada por 5 minutos |
+| Uso de memória de dados Redis | 80% | sustentado por 5 minutos |
+| Uso de memória de sistema Redis | 80% | sustentado por 5 minutos |
+| Encaminhamento dead-letter Pub/Sub | qualquer mensagem | orientado a evento |
+| Execução Cloud Run Job com falha | qualquer falha | orientado a evento |
+| Conexões Redis rejeitadas | qualquer conexão rejeitada | orientado a evento |
 
-Only the portable capacity/ratio thresholds are configurable through the `thresholds` object. Event-oriented policies intentionally trigger on the first observed event because each event represents a concrete failure path worth investigation in this reference architecture.
+Somente thresholds portáveis de capacidade/taxa são configuráveis pelo objeto `thresholds`. Políticas orientadas a evento disparam no primeiro evento observado porque cada evento representa caminho concreto de falha que merece investigação.
 
-## Missing data
+## Dados ausentes
 
-Metric-threshold conditions use `EVALUATION_MISSING_DATA_INACTIVE`. Lack of telemetry by itself does not create an incident. This avoids turning an idle Cloud Run service, a quiet Pub/Sub subscription, or an unused Redis instance into a false positive. Availability of telemetry itself belongs to broader operational policy and can be added by callers when the workload requires it.
+Condições usam `EVALUATION_MISSING_DATA_INACTIVE`. Ausência de telemetria sozinha não cria incident. Isso evita transformar Cloud Run ocioso, subscription silenciosa ou Redis sem uso em falso positivo. Disponibilidade da telemetria pertence à política operacional mais ampla e pode ser adicionada pelos callers.
 
-## Lifecycle
+## Ciclo de vida
 
-Alert policies use `deletion_policy = "DELETE"`. They are operational configuration, not durable data-plane resources, so deleting the module should remove the policies instead of blocking an environment teardown or abandoning unmanaged policies.
+Políticas de alerta usam `deletion_policy = "DELETE"`. São configuração operacional, não recursos duráveis de data plane, portanto remover o módulo deve remover as políticas em vez de bloquear teardown ou abandoná-las sem gerenciamento.
 
-## Security and state
+## Segurança e state
 
-- notification destination secrets are outside this module;
-- no application secret values are accepted or emitted;
-- policy documentation contains only resource identifiers and responder guidance;
-- Terraform state contains policy configuration and notification channel resource names, but not notification-channel secret material created elsewhere;
-- enabling or disabling policies does not mutate the monitored workloads.
+- segredos de destinos de notificação ficam fora do módulo;
+- nenhum valor secreto da aplicação é aceito ou emitido;
+- documentação das políticas contém somente identificadores de recursos e orientação ao responder;
+- state contém configuração das políticas e nomes dos canais, mas não material secreto dos canais criados em outro lugar;
+- habilitar/desabilitar políticas não altera workloads monitorados.
 
-## Testing
+## Testes
 
-Native Terraform tests use the mocked Google provider and plan mode. They verify target selection, metric/filter contracts, defaults, channel wiring, and input validation without Google Cloud credentials or billable resources.
+Testes nativos usam provider Google mockado e modo plan. Verificam seleção de targets, contratos de métricas/filtros, defaults, wiring de canais e validação de inputs sem credenciais ou recursos com custo.
 
-## Environment composition and operating guidance
+## Composição nos ambientes e orientação operacional
 
-The module is already attached to both production roots:
+O módulo já está conectado aos dois roots:
 
-- `environments/dev/observability.tf` applies development-oriented thresholds and optional notification channels;
-- `environments/prod/observability.tf` applies production-oriented thresholds and optional notification channels.
+- `environments/dev/observability.tf` aplica thresholds de desenvolvimento e canais opcionais;
+- `environments/prod/observability.tf` aplica thresholds de produção e canais opcionais.
 
-See [`docs/observability.md`](../../docs/observability.md) for the completed operating guidance, including structured logging expectations, telemetry ownership, SLI/SLO selection, error budgets, and the dashboard policy used by this blueprint.
+Consulte [`docs/observability.md`](../../docs/observability.md) para logging estruturado, ownership de telemetria, seleção SLI/SLO, error budgets e política de dashboards.
