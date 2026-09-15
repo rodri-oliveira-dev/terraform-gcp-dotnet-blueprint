@@ -1,31 +1,31 @@
-# Guia de prontidão para produção
+# Production readiness guide
 
-Este documento é o ponto de entrada orientado a operadores para adoção do blueprint. Ele consolida ordem de ciclo de vida, política de ambientes, limites de segurança, expectativas de recovery, limitações conhecidas e critérios de prontidão de release sem duplicar contratos de baixo nível dos módulos.
+This document is the operator-oriented entry point for adopting the blueprint. It consolidates lifecycle order, environment policy, security boundaries, recovery expectations, known limitations and release-readiness criteria without duplicating low-level module contracts.
 
-## O que significa estar pronto para produção aqui
+## What production-ready means here
 
-O repositório é **orientado a produção**, não prescritivo para produção. O baseline v1.0 demonstra composição segura, controles de entrega e limites operacionais que podem ser adaptados a um workload real. Ele não comprova que capacidade padrão, SLOs, desenho de edge público ou modelo IAM da organização sejam adequados a todo sistema de produção.
+The repository is **production-oriented**, not production-prescriptive. The v1.0 baseline demonstrates secure composition, delivery controls and operational boundaries that can be adapted to a real workload. It does not prove that the default capacity, SLOs, public-edge design or organization IAM model are appropriate for every production system.
 
-Antes de adotar o blueprint, trate cada padrão como um ponto inicial a ser revisado, e não como recomendação implícita.
+Before adopting the blueprint, treat every default as a reviewed starting point rather than an implicit recommendation.
 
-## Passo a passo do zero até um ambiente
+## Zero-to-environment walkthrough
 
-### 1. Prepare os projetos Google Cloud e o modelo de ownership
+### 1. Prepare the Google Cloud projects and ownership model
 
-Decida quais projetos são responsáveis por:
+Decide which projects own:
 
-- bucket de state Terraform;
-- Workload Identity Federation e service account de deployment;
-- infraestrutura de `dev`;
-- infraestrutura de `prod`.
+- the Terraform state bucket;
+- Workload Identity Federation and the deployment service account;
+- `dev` infrastructure;
+- `prod` infrastructure.
 
-Eles podem ser o mesmo projeto em um deployment pequeno de referência ou projetos separados em uma organização mais rígida. Quando forem diferentes, conceda acesso à service account de deployment separadamente em cada limite de recurso/projeto.
+They may be the same project for a small reference deployment or separate projects in a stricter organization. When they differ, grant the deployment service account access independently to each resource/project boundary.
 
-Revise a região padrão `us-central1`, os CIDRs de subnet/PSA e as políticas organizacionais antes de qualquer apply.
+Review the default `us-central1` region, subnet/PSA CIDRs and organization policies before any apply.
 
-### 2. Faça o bootstrap do state remoto
+### 2. Bootstrap remote state
 
-Use `bootstrap/state` com uma credencial de operador. O root começa deliberadamente com state local.
+Use `bootstrap/state` with an operator credential. The root deliberately starts with local state.
 
 ```bash
 cd bootstrap/state
@@ -36,199 +36,199 @@ terraform validate
 terraform plan
 ```
 
-Aplique somente após revisão. Preserve com segurança o state local do bootstrap. O bucket resultante usa object versioning, uniform bucket-level access, prevenção de acesso público, `force_destroy = false` e `prevent_destroy` do Terraform.
+Apply only after review. Preserve the bootstrap local state securely. The resulting bucket uses object versioning, uniform bucket-level access, public access prevention, `force_destroy = false` and Terraform `prevent_destroy`.
 
-Consulte `bootstrap/state/README.md`.
+See `bootstrap/state/README.md`.
 
-### 3. Faça o bootstrap do WIF para GitHub Actions
+### 3. Bootstrap GitHub Actions WIF
 
-Use `bootstrap/github-actions-wif` com o backend GCS protegido. Valide os IDs imutáveis do owner/repositório GitHub e a ref permitida (`refs/heads/main` por padrão).
+Use `bootstrap/github-actions-wif` with the protected GCS backend. Validate the immutable GitHub owner/repository IDs and the allowed ref (`refs/heads/main` by default).
 
-O bootstrap cria pool/provider WIF, service account dedicada de deployment e relação de impersonation. Ele não cria chave de service account nem concede acesso amplo aos projetos de workload por padrão.
+The bootstrap creates the WIF pool/provider, dedicated deployment service account and impersonation relationship. It does not create a service-account key and does not grant broad workload-project access by default.
 
-Após o apply, configure as variáveis de repositório documentadas em `docs/terraform-deployment.md`.
+After apply, configure the repository variables documented in `docs/terraform-deployment.md`.
 
-Execute manualmente `gcp-auth-smoke.yml` a partir da `main` para comprovar OIDC -> WIF -> impersonation da service account antes de depender de workflows Terraform autenticados.
+Run the manual `gcp-auth-smoke.yml` from `main` to prove OIDC -> WIF -> service-account impersonation before relying on credentialed Terraform workflows.
 
-### 4. Configure o IAM de deployment deliberadamente
+### 4. Configure deployment IAM deliberately
 
-A identidade de deployment precisa das permissões para as capacidades que gerencia, além de acesso a objetos no bucket de state. Use o mapa de capacidades em `docs/terraform-deployment.md` como ponto de partida.
+The deployment identity needs permissions for the capabilities it manages plus object access to the state bucket. Use the capability map in `docs/terraform-deployment.md` as a starting point.
 
-Não conceda `roles/owner` ou `roles/editor` apenas para fazer o Terraform funcionar. Prefira grants no escopo de recurso quando o serviço permitir e derive custom roles quando controles organizacionais exigirem um conjunto mais restrito de permissões.
+Do not grant `roles/owner` or `roles/editor` simply to make Terraform pass. Prefer resource-level grants where the service permits them and derive custom roles if organizational controls require a narrower permission set.
 
-### 5. Configure GitHub Environments e variáveis do repositório
+### 5. Configure GitHub Environments and repository variables
 
-Crie GitHub Environments chamados `dev` e `prod`. `prod` deve usar Required Reviewers e, quando a governança permitir, Prevent self-review.
+Create GitHub Environments named `dev` and `prod`. `prod` should use Required Reviewers and, where governance permits, Prevent self-review.
 
-Configure variáveis do repositório para:
+Configure the repository variables for:
 
-- nome completo do recurso do provider WIF;
-- service account de deployment;
-- bucket de state;
-- project IDs de dev/prod;
-- URIs das imagens API/worker/batch por ambiente;
-- valores explícitos de `TF_<ENV>_ENABLE_WORKLOADS`.
+- WIF provider resource name;
+- deployment service account;
+- state bucket;
+- dev/prod project IDs;
+- API/worker/batch image URIs per environment;
+- explicit `TF_<ENV>_ENABLE_WORKLOADS` values.
 
-Não coloque segredos da aplicação, Redis AUTH ou payloads de CA nas variáveis do repositório.
+Do not place application secrets, Redis AUTH or CA payloads in repository variables.
 
-### 6. Faça plan e apply da fundação do ambiente
+### 6. Plan and apply the environment foundation
 
-Comece com `TF_<ENV>_ENABLE_WORKLOADS=false`.
+Start with `TF_<ENV>_ENABLE_WORKLOADS=false`.
 
-A fundação cria declarações para habilitar serviços necessários, VPC/subnet, Private Service Access, Redis, identidades de workload/transporte, containers do Secret Manager e IAM com escopo. Ela deliberadamente não cria workloads que referenciem versões de segredos ainda inexistentes.
+The foundation creates the required service enablement declarations, VPC/subnet, Private Service Access, Redis, workload/transport identities, Secret Manager containers and scoped IAM. It deliberately does not create workloads that reference secret versions that do not exist yet.
 
-Use o workflow manual `Terraform plan` para revisar o plan do backend/provider real. Use `Terraform apply` somente após autorização explícita.
+Use the manual `Terraform plan` workflow to review the real backend/provider plan. Use `Terraform apply` only after explicit authorization.
 
-### 7. Popule versões dos segredos externamente
+### 7. Populate secret versions externally
 
-Inspecione o output `secret_bootstrap` e crie versões atuais para configurações específicas de aplicação do ambiente, Redis AUTH e segredos de Redis CA por meio de um processo confiável.
+Inspect the `secret_bootstrap` output and create current versions for the environment-specific application configuration, Redis AUTH and Redis CA secrets through a trusted process.
 
-Terraform é responsável pelos containers e pela política de acesso dos segredos, **não pela criação ou rotação dos payloads**. Nunca encaminhe esses payloads por variáveis Terraform, variáveis do repositório GitHub, logs de PR ou artifacts de plan.
+Terraform owns the secret containers and access policy, **not payload creation or rotation**. Never route these payloads through Terraform variables, GitHub repository variables, PR logs or plan artifacts.
 
-### 8. Ative os workloads
+### 8. Activate workloads
 
-Altere a variável do ambiente selecionado para `TF_<ENV>_ENABLE_WORKLOADS=true`, revise um novo plan e use o workflow de apply controlado.
+Change the selected repository variable to `TF_<ENV>_ENABLE_WORKLOADS=true`, review a new plan and use the controlled apply workflow.
 
-Essa transição é intencionalmente unidirecional para um determinado state. Depois que a ativação tiver sido aplicada como `true`, o activation lock rejeita a reversão para `false` antes que o Terraform possa desmontar parcialmente recursos de mensageria/trigger/IAM e depois parar nos recursos Cloud Run protegidos.
+This transition is intentionally one-way for a given state. Once activation has been applied as `true`, the activation lock rejects reverting the flag to `false` before Terraform can partially dismantle messaging/trigger/IAM resources and then stop at protected Cloud Run resources.
 
-### 9. Verifique a observabilidade e ajuste a política
+### 9. Verify observability and tune policy
 
-Quando os workloads estão ativos, o ambiente compõe o baseline de alertas do Cloud Monitoring. Configure nomes de recursos de canais de notificação existentes quando notificações forem desejadas.
+When workloads are active, the environment composes the Cloud Monitoring alert baseline. Configure existing notification channel resource names if notifications are desired.
 
-Trate os thresholds fornecidos como pontos iniciais operacionais, não como SLOs. Ajuste-os usando tráfego observado, capacidade e histórico de incidentes. Times de aplicação devem configurar separadamente semântica de logging/tracing estruturado e redaction de dados sensíveis.
+Treat the shipped thresholds as operational starting points, not SLOs. Tune them using observed traffic, capacity and incident history. Application teams must separately configure structured logging/tracing semantics and redact sensitive data.
 
-### 10. Execute a validação em GCP real deliberadamente
+### 10. Perform real-GCP validation deliberately
 
-CI offline não é evidência de compatibilidade real com backend/APIs. Siga `docs/gcp-integration-validation.md` e registre um plan manual de desenvolvimento bem-sucedido a partir da `main` antes de afirmar validação de plan em GCP real.
+Offline CI is not evidence of real backend/API compatibility. Follow `docs/gcp-integration-validation.md` and record a successful manual development plan from `main` before claiming real-GCP plan validation.
 
-Um plan ainda não comprova execução em runtime, entrega de mensagens, conectividade do cliente Redis ou comportamento das notificações de alerta.
+A plan still does not prove runtime execution, delivery, Redis client connectivity or alert notification behavior.
 
-## Política dev versus prod
+## Dev versus prod policy
 
-| Política | dev | prod |
+| Policy | dev | prod |
 | --- | --- | --- |
-| Prefixo de state | `environments/dev` | `environments/prod` |
-| Subnet de workload padrão | `10.40.0.0/24` | `10.60.0.0/24` |
-| PSA padrão | `10.50.0.0/16` | `10.70.0.0/16` |
-| Redis | `BASIC`, 1 GiB | `STANDARD_HA`, 5 GiB padrão |
+| State prefix | `environments/dev` | `environments/prod` |
+| Workload subnet default | `10.40.0.0/24` | `10.60.0.0/24` |
+| PSA default | `10.50.0.0/16` | `10.70.0.0/16` |
+| Redis | `BASIC`, 1 GiB | `STANDARD_HA`, 5 GiB default |
 | API | 1 vCPU / 512 MiB, min 0, max 2 | 2 vCPU / 1 GiB, min 1, max 20 |
 | Worker | 1 vCPU / 512 MiB, min 0, max 2 | 1 vCPU / 1 GiB, min 1, max 20 |
-| Tentativas DLQ Pub/Sub | 10 | 20 |
+| Pub/Sub DLQ attempts | 10 | 20 |
 | Batch | 1 task / parallelism 1 / 1 vCPU / 512 MiB | 4 tasks / parallelism 2 / 2 vCPU / 2 GiB |
-| Retries do Scheduler | 3 | 5 |
-| Alerta 5xx Cloud Run | 10% | 5% |
-| Idade da mensagem Pub/Sub não confirmada mais antiga | 600s | 300s |
-| Thresholds de memória Redis | 90% | 80% |
+| Scheduler retries | 3 | 5 |
+| Cloud Run 5xx alert | 10% | 5% |
+| Oldest Pub/Sub unacked age | 600s | 300s |
+| Redis memory thresholds | 90% | 80% |
 
-Esses valores são referências. A adoção em produção exige testes de capacidade e objetivos de confiabilidade específicos do produto.
+These are reference values. Production adoption requires capacity testing and product-specific reliability goals.
 
-## Limites de IAM
+## IAM boundaries
 
-A arquitetura separa identidades por propósito:
+The architecture separates identities by purpose:
 
-- runtime da API;
-- runtime do worker;
-- runtime do batch;
-- transporte Pub/Sub push;
-- trigger do Scheduler;
-- deployment via GitHub Actions.
+- API runtime;
+- worker runtime;
+- batch runtime;
+- Pub/Sub push transport;
+- Scheduler trigger;
+- GitHub Actions deployment.
 
-Módulos de identidade de runtime não concedem roles genéricas de projeto. A API recebe permissão de publisher apenas para seu tópico de aplicação. Grants de secret accessor são aplicados por segredo. Grants de invocação usam escopo de recurso quando suportado.
+Runtime identity modules do not grant generic project roles. The API receives topic publisher permission only for its application topic. Secret accessor grants are applied per secret. Invocation grants are resource-scoped where supported.
 
-Revise todas as permissões de deployment no nível de projeto separadamente do IAM de runtime. Um deployer Terraform poderoso não é motivo para tornar poderosas as identidades de runtime.
+Review all project-level deployment permissions separately from runtime IAM. A powerful Terraform deployer is not a reason to make runtime identities powerful.
 
-## Recovery de state
+## State recovery
 
-Trate recovery de state como procedimento de incidente.
+Treat state recovery as an incident procedure.
 
-1. Interrompa deployments do ambiente afetado.
-2. Preserve o objeto/geração atual do state para investigação.
-3. Identifique a última geração conhecida como boa no GCS e o commit Git correspondente.
-4. Determine se o problema é corrupção de state, drift de configuração ou mudança legítima de infraestrutura.
-5. Restaure uma geração anterior somente depois de confirmar que ela representa o state pretendido.
-6. Execute `terraform plan` antes de qualquer apply e investigue ações inesperadas de create/delete/replacement.
-7. Não automatize `force-unlock`, `state rm`, restauração de state ou imports em CI genérico.
+1. Stop deployments for the affected environment.
+2. Preserve the current state object/generation for investigation.
+3. Identify the last known-good GCS object generation and matching Git commit.
+4. Determine whether the problem is state corruption, configuration drift or a legitimate infrastructure change.
+5. Restore a prior object generation only after confirming it represents the intended state.
+6. Run `terraform plan` before any apply and investigate unexpected create/delete/replacement actions.
+7. Do not automate `force-unlock`, `state rm`, state restoration or imports in generic CI.
 
-Object versioning fornece histórico de recovery; ele não elimina a necessidade de julgamento do operador.
+Object versioning provides recovery history; it does not eliminate the need for operator judgment.
 
-## Proteção contra exclusão
+## Deletion protection
 
-Diversos caminhos destrutivos são intencionalmente protegidos:
+Several destructive paths are intentionally guarded:
 
-- o bucket de state possui `prevent_destroy` do Terraform e `force_destroy = false`;
-- Cloud Run e Redis usam proteção contra exclusão no provider por padrão;
-- ativação dos workloads usa um lock Terraform com `prevent_destroy`;
-- o workflow de apply bloqueia ações de delete/replacement a menos que `allow_destroy=true` seja selecionado explicitamente.
+- the state bucket has Terraform `prevent_destroy` and `force_destroy = false`;
+- Cloud Run and Redis use provider-level deletion protection by default;
+- workload activation uses a Terraform `prevent_destroy` lock;
+- the apply workflow blocks delete/replacement actions unless `allow_destroy=true` is explicitly selected.
 
-Uma exclusão intencional, portanto, exige mudanças explícitas de configuração e um plan revisado. Não remova múltiplas camadas de proteção em uma única mudança sem revisão.
+Intentional deletion therefore requires explicit configuration changes and a reviewed plan. Do not remove multiple layers of protection in one unreviewed change.
 
-## Ownership de segredos
+## Secret ownership
 
-Terraform pode persistir no state valores sensíveis calculados pelo provider mesmo quando outputs não os expõem. Por isso:
+Terraform may persist provider-computed sensitive values in state even when outputs do not expose them. For this reason:
 
-- acesso ao state remoto é sensível;
-- payloads/versões de segredos são gerenciados fora do Terraform;
-- material de Redis AUTH e CA não é output;
-- variáveis GitHub contêm apenas identificadores/configuração;
-- logging da aplicação não deve emitir payloads do Secret Manager, authorization headers, cookies ou credenciais Redis.
+- remote-state access is sensitive;
+- secret payloads/versions are managed outside Terraform;
+- Redis AUTH and CA material are not outputs;
+- GitHub variables contain identifiers/configuration only;
+- application logging must not emit Secret Manager payloads, authorization headers, cookies or Redis credentials.
 
-## Limitações conhecidas e não objetivos deliberados
+## Known limitations and deliberate non-goals
 
-O baseline v1.0 deixa intencionalmente para quem o adota:
+The v1.0 baseline intentionally leaves the following to adopters:
 
-- arquitetura de ingress/edge público (external load balancer, API Gateway, Cloud Armor, DNS, certificados);
-- pipelines de build/release dos containers e código real de negócio .NET;
-- bancos relacionais e workflows de migração de banco;
-- políticas de organization/folder, governança de billing e integração com rede corporativa;
-- Cloud NAT/arquitetura geral de saída para internet;
-- automação de criação/rotação de payloads de segredos;
-- metas de SLO específicas de workload e políticas de burn-rate;
-- dashboards customizados genéricos sem pergunta operacional;
-- testes de carga/performance/chaos;
-- verificação em runtime de entrega Pub/Sub, execução batch, AUTH/TLS do cliente Redis ou entrega de notificações de alerta;
-- rollback automático, manipulação de state ou workflows de destroy;
-- recomendações de capacidade para produção.
+- public ingress/edge architecture (external load balancer, API Gateway, Cloud Armor, DNS, certificates);
+- container build/release pipelines and actual .NET business application code;
+- relational databases and database migration workflows;
+- organization/folder policy, billing governance and enterprise networking integration;
+- Cloud NAT/general outbound-internet architecture;
+- secret payload creation/rotation automation;
+- workload-specific SLO targets and burn-rate policies;
+- generic custom dashboards without an operational question;
+- load/performance/chaos testing;
+- runtime verification of Pub/Sub delivery, batch execution, Redis client AUTH/TLS or alert notification delivery;
+- automatic rollback, state surgery or destroy workflows;
+- production capacity recommendations.
 
-## Checklist de adoção
+## Adoption checklist
 
-Antes de reutilizar este repositório em outro projeto/organização:
+Before reusing this repository in another project/organization:
 
-- [ ] Substitua os IDs imutáveis de owner/repositório GitHub no bootstrap WIF.
-- [ ] Revise a Git ref permitida e as regras de proteção do repositório/ambiente.
-- [ ] Escolha os limites de projeto para state, WIF, dev e prod.
-- [ ] Escolha um bucket de state globalmente único e revise o IAM do bucket.
-- [ ] Revise região, CIDRs das subnets e ranges PSA em relação às rotas existentes.
-- [ ] Revise todas as permissões IAM do deployment; não use roles básicas Owner/Editor.
-- [ ] Substitua variáveis de imagem por imagens controladas do Artifact Registry/registry.
-- [ ] Defina como versões de payloads dos segredos serão criadas e rotacionadas fora do Terraform.
-- [ ] Defina quem pode recuperar/distribuir material de Redis AUTH e CA.
-- [ ] Revise requisitos de ingress público; não presuma que a API é acessível pela internet.
-- [ ] Revise sizing e scaling de `dev`/`prod` de acordo com a demanda do workload.
-- [ ] Revise configurações de retry/DLQ do Pub/Sub de acordo com a semântica das mensagens.
-- [ ] Revise task count/parallelism/retries do batch de acordo com idempotência.
-- [ ] Configure canais de notificação fora deste state quando necessário.
-- [ ] Defina SLIs/SLOs reais a partir dos requisitos de produto, em vez de copiar thresholds de alerta.
-- [ ] Configure proteção de GitHub Environment para produção.
-- [ ] Valide WIF com o workflow de smoke a partir da `main`.
-- [ ] Conclua a validação do plan de `dev` em GCP real e retenha a evidência.
-- [ ] Estabeleça ownership para recovery de state e pratique o procedimento antes de um incidente real.
-- [ ] Documente extensões arquiteturais como mudanças/ADRs separadas e revisadas.
+- [ ] Replace immutable GitHub owner/repository IDs in the WIF bootstrap.
+- [ ] Review the allowed Git ref and repository/environment protection rules.
+- [ ] Choose project boundaries for state, WIF, dev and prod.
+- [ ] Choose a globally unique state bucket and review bucket IAM.
+- [ ] Review region, subnet CIDRs and PSA ranges against existing routes.
+- [ ] Review all deployment IAM permissions; do not use basic Owner/Editor roles.
+- [ ] Replace image variables with controlled Artifact Registry/registry images.
+- [ ] Decide how secret payload versions are created and rotated outside Terraform.
+- [ ] Decide who may retrieve/distribute Redis AUTH and CA material.
+- [ ] Review public-ingress requirements; do not assume the API is internet-accessible.
+- [ ] Review `dev`/`prod` sizing and scaling against workload demand.
+- [ ] Review Pub/Sub retry/DLQ settings against message semantics.
+- [ ] Review batch task count/parallelism/retries against idempotency.
+- [ ] Configure notification channels outside this state where required.
+- [ ] Define real SLIs/SLOs from product requirements rather than copying alert thresholds.
+- [ ] Configure GitHub Environment protection for production.
+- [ ] Validate WIF with the smoke workflow from `main`.
+- [ ] Complete real-GCP `dev` plan validation and retain the evidence.
+- [ ] Establish state-recovery ownership and practice the procedure before a real incident.
+- [ ] Document any architecture extensions as separate reviewed changes/ADRs.
 
-## Checklist de prontidão da release v1.0.0
+## v1.0.0 release-readiness checklist
 
-O repositório pode receber a tag `v1.0.0` somente após revisão humana confirmar:
+The repository may be tagged `v1.0.0` only after human review confirms:
 
-- [ ] README descreve a arquitetura implementada e não contém linguagem obsoleta de roadmap/status.
-- [ ] Documentos de arquitetura, ambiente, deployment, observabilidade e validação de integração estão coerentes com o código.
-- [ ] Recovery de state, proteção contra exclusão e ownership de segredos estão documentados.
-- [ ] Troubleshooting cobre os principais domínios de falha de backend/WIF/provider/rede/compute/mensageria/cache/monitoring.
-- [ ] Limitações conhecidas/não objetivos estão explícitos.
-- [ ] Checklist de adoção está completo e compreensível sem contexto do histórico do repositório.
-- [ ] `CHANGELOG.md` e `docs/releases/v1.0.0.md` foram revisados.
-- [ ] A `main` atual passa format, validate, test, TFLint e Trivy.
-- [ ] Nenhuma thread de review não resolvida permanece dos PRs de fechamento do roadmap.
-- [ ] A issue #29 contém evidência bem-sucedida de plan em GCP real ou a release está explicitamente marcada como ainda não validada por plan em GCP real.
-- [ ] Nenhum state, `.tfvars` real, artifact de plan, credencial ou payload de segredo foi commitado.
-- [ ] Nenhum `terraform apply`/`destroy` foi executado apenas para preparar documentação de release.
+- [ ] README describes the implemented architecture and contains no obsolete roadmap/status language.
+- [ ] Architecture, environment, deployment, observability and integration-validation docs agree with the code.
+- [ ] State recovery, deletion protection and secret ownership are documented.
+- [ ] Troubleshooting covers the main backend/WIF/provider/network/compute/messaging/cache/monitoring failure domains.
+- [ ] Known limitations/non-goals are explicit.
+- [ ] Adoption checklist is complete and understandable without repository-history context.
+- [ ] `CHANGELOG.md` and `docs/releases/v1.0.0.md` have been reviewed.
+- [ ] Current `main` passes format, validate, test, TFLint and Trivy.
+- [ ] No unresolved review thread remains from roadmap-closing PRs.
+- [ ] Issue #29 either contains successful real-GCP plan evidence or the release is explicitly labeled as not yet real-GCP-plan-validated.
+- [ ] No state, real `.tfvars`, plan artifact, credentials or secret payload has been committed.
+- [ ] No `terraform apply`/`destroy` was performed merely to prepare release documentation.
 
-O checklist prepara a release; ele não cria tag nem GitHub Release automaticamente.
+The checklist prepares the release; it does not create a tag or GitHub Release automatically.

@@ -1,108 +1,108 @@
-# Ambiente de desenvolvimento
+# Development environment
 
-Este root compõe os módulos reutilizáveis no ambiente completo de desenvolvimento.
+This root composes the reusable modules into the complete development environment.
 
-Ele usa sizing e thresholds de observabilidade orientados a desenvolvimento, preservando os mesmos limites arquiteturais de produção.
+It uses development-oriented sizing and observability thresholds while preserving the same architectural boundaries as production.
 
-## O que este root cria
+## What this root creates
 
-Recursos de fundação são sempre declarados:
+Foundation resources are always declared:
 
-- APIs Google Cloud necessárias, incluindo Cloud Monitoring, sem desabilitar APIs compartilhadas no destroy;
-- uma VPC em modo customizado, subnet de workloads e conexão Private Service Access;
-- uma instância Memorystore for Redis usando `PRIVATE_SERVICE_ACCESS`, Redis AUTH e TLS;
-- service accounts de runtime separadas para API, worker Pub/Sub e batch;
-- identidades de transporte separadas para Pub/Sub push e Cloud Scheduler;
-- metadados do Secret Manager e IAM de accessor no escopo de cada segredo para configuração dos workloads, Redis AUTH e server CA do Redis.
+- required Google Cloud APIs, including Cloud Monitoring, without disabling shared APIs on destroy;
+- one custom-mode VPC, workload subnet, and Private Service Access connection;
+- one Memorystore for Redis instance using `PRIVATE_SERVICE_ACCESS`, Redis AUTH, and TLS;
+- separate runtime service accounts for API, Pub/Sub worker, and batch workloads;
+- separate transport identities for Pub/Sub push and Cloud Scheduler;
+- Secret Manager metadata and secret-scoped accessor IAM for workload config, Redis AUTH, and the Redis server CA.
 
-Quando `enable_workloads = true`, o root também cria:
+When `enable_workloads = true`, the root additionally creates:
 
-- API Cloud Run privada/autenticada;
-- worker Cloud Run privado/autenticado;
-- tópico/subscription Pub/Sub, política de retry, tópico dead-letter e entrega push autenticada;
-- `roles/pubsub.publisher` para a identidade de runtime da API somente no tópico da aplicação;
-- Cloud Run Job finito;
-- job Cloud Scheduler que invoca a Cloud Run Admin API com identidade dedicada de trigger;
-- grants `roles/run.invoker` no escopo de recurso para identidades Pub/Sub e Scheduler;
-- políticas de alerta do Cloud Monitoring para taxa 5xx do Cloud Run, backlog/DLQ do Pub/Sub, execuções batch com falha e pressão/conexões rejeitadas do Redis.
+- a private/authenticated Cloud Run API;
+- a private/authenticated Cloud Run worker service;
+- Pub/Sub topic/subscription, retry policy, dead-letter topic, and authenticated push delivery;
+- `roles/pubsub.publisher` for the API runtime identity on the application topic only;
+- a finite Cloud Run Job;
+- a Cloud Scheduler job that invokes the Cloud Run Admin API with a dedicated trigger identity;
+- resource-scoped `roles/run.invoker` grants for Pub/Sub and Scheduler identities;
+- Cloud Monitoring alert policies for Cloud Run 5xx ratio, Pub/Sub backlog/DLQ, failed batch executions, and Redis pressure/rejected connections.
 
-Os três workloads usam Direct VPC egress para acessar Redis. Nenhum Serverless VPC Access connector é criado.
+All three workloads use Direct VPC egress to reach Redis. No Serverless VPC Access connector is created.
 
-## Por que o deployment é intencionalmente dividido em duas fases
+## Why deployment is intentionally two-phase
 
-O repositório mantém payloads de segredos da aplicação fora do Terraform. Memorystore também gera sua Redis AUTH string e server CA TLS depois que a instância existe. Cloud Run, por outro lado, exige que as versões Secret Manager referenciadas existam quando uma revision é implantada.
+The repository keeps application secret payloads outside Terraform. Memorystore also generates its Redis AUTH string and TLS server CA after the instance exists. Cloud Run, however, requires referenced Secret Manager versions to exist when a revision is deployed.
 
-Para evitar `terraform -target` como workflow normal, este root usa `enable_workloads`:
+To avoid `terraform -target` as the normal workflow, this root uses `enable_workloads`:
 
-1. **Fase de fundação** — mantenha `enable_workloads = false`. Terraform pode criar APIs, rede, Redis, identidades, containers de segredos e IAM sem criar workloads Cloud Run que referenciem versões inexistentes.
-2. **Bootstrap de segredos** — operador ou processo de entrega confiável cria versões para cada segredo reportado pelo output `secret_bootstrap`. Material Redis AUTH e CA deve ser recuperado do Memorystore e transferido sem registrar nem commitar payloads.
-3. **Fase de workloads** — defina `enable_workloads = true`, revise o plan e aplique. Cloud Run services/job, entrega Pub/Sub, Scheduler e políticas de alerta são então criados usando versões existentes dos segredos.
+1. **Foundation phase** — keep `enable_workloads = false`. Terraform can create APIs, network, Redis, identities, secret containers, and IAM without creating Cloud Run workloads that reference missing secret versions.
+2. **Secret bootstrap** — a trusted operator or delivery process creates versions for every secret reported by the `secret_bootstrap` output. Redis AUTH and CA material must be retrieved from Memorystore and transferred without logging or committing the payloads.
+3. **Workload phase** — set `enable_workloads = true`, review the plan, and apply. Cloud Run services/job, Pub/Sub delivery, Scheduler, and alert policies are then created against existing secret versions.
 
-Terraform nunca recebe esses payloads de segredos como variables ou outputs. Depois que a ativação dos workloads foi aplicada neste state, mudar `enable_workloads` de volta para false é intencionalmente rejeitado pelo activation lock.
+Terraform never receives those secret payloads as variables or outputs. Once workload activation has been applied in this state, changing `enable_workloads` back to false is intentionally rejected by the activation lock.
 
-## Observabilidade
+## Observability
 
-Desenvolvimento usa o mesmo conjunto de sinais de produção, com padrões mais tolerantes:
+Development uses the same signal set as production with more tolerant defaults:
 
-- taxa HTTP 5xx do Cloud Run: 10%;
-- mensagem Pub/Sub não confirmada mais antiga: 600 segundos;
-- uso de memória de dados e sistema do Redis: 90%;
-- qualquer encaminhamento para dead-letter, execução de Cloud Run Job com falha ou conexão Redis rejeitada permanece alertável.
+- Cloud Run HTTP 5xx ratio: 10%;
+- oldest unacknowledged Pub/Sub message: 600 seconds;
+- Redis data-memory and system-memory usage: 90%;
+- any dead-letter forwarding, failed Cloud Run Job execution, or rejected Redis connection remains alertable.
 
-`observability_notification_channels` aceita somente nomes de recursos de canais de notificação existentes no Cloud Monitoring. Destinos dos canais e sua configuração sensível ficam fora deste state. Um conjunto vazio cria políticas de alerta sem destinos de notificação.
+`observability_notification_channels` accepts only existing Cloud Monitoring notification channel resource names. Channel destinations and their sensitive configuration remain outside this state. An empty set creates alert policies without notification destinations.
 
-Consulte `../../docs/observability.md` para expectativas de logging estruturado, orientação SLI/SLO, ownership de telemetria e justificativa para não criar dashboard genérico.
+See `../../docs/observability.md` for structured logging expectations, SLI/SLO guidance, telemetry ownership, and the rationale for not creating a generic dashboard.
 
-## State remoto
+## Remote state
 
-O backend usa prefixo fixo específico do ambiente:
+The backend uses a fixed environment-specific prefix:
 
 ```hcl
 prefix = "environments/dev"
 ```
 
-O bucket de state é fornecido na inicialização em vez de ficar hard-coded:
+The state bucket is intentionally supplied at initialization time rather than hard-coded:
 
 ```bash
 terraform init \
   -backend-config="bucket=YOUR_TERRAFORM_STATE_BUCKET"
 ```
 
-Para validação sem acesso ao backend:
+For validation without backend access, use:
 
 ```bash
 terraform init -backend=false
 terraform validate
 ```
 
-## Configuração
+## Configuration
 
-Copie o arquivo de exemplo localmente e mantenha o arquivo real fora do commit:
+Copy the example file locally and keep the real file uncommitted:
 
 ```bash
 cp terraform.tfvars.example terraform.tfvars
 ```
 
-No mínimo, substitua placeholders de projeto/imagem e revise CIDRs, labels de ownership, thresholds de alerta e nomes opcionais de recursos de canais de notificação.
+At minimum, replace the project/image placeholders, review CIDRs, ownership labels, alert thresholds, and optional notification-channel resource names.
 
-O ambiente de desenvolvimento usa intencionalmente uma instância Redis `BASIC` de 1 GiB para reduzir custo mantendo AUTH e TLS.
+The development environment intentionally uses a 1 GiB `BASIC` Redis instance to reduce cost while retaining AUTH and TLS.
 
-## Limites de segurança
+## Security boundaries
 
-- A API **não é pública**. Este root não concede `allUsers` nem cria external load balancer/API gateway.
-- API, worker e batch usam identidades de runtime diferentes.
-- Pub/Sub push e Cloud Scheduler usam identidades de transporte diferentes dos workloads que invocam.
-- Acesso a segredos é concedido no escopo de cada segredo.
-- A API recebe permissão de publisher somente no tópico Pub/Sub da aplicação.
-- Destinos de canais de notificação não são armazenados nesta configuração de ambiente.
-- Payloads de Redis AUTH e CA não são outputs Terraform.
-- State Terraform permanece sensível porque providers podem persistir atributos sensíveis calculados. Use o bucket GCS protegido criado por `bootstrap/state`.
-- `terraform apply` e população de segredos são ações controladas pelo operador; CI de pull request permanece sem credenciais.
+- The API is **not public**. This root does not grant `allUsers` or create an external load balancer/API gateway.
+- API, worker, and batch use different runtime identities.
+- Pub/Sub push and Cloud Scheduler use different transport identities from the workloads they invoke.
+- Secret access is granted at individual-secret scope.
+- The API receives publisher permission only on the application Pub/Sub topic.
+- Notification-channel destinations are not stored in this environment configuration.
+- Redis AUTH and CA payloads are not Terraform outputs.
+- Terraform state remains sensitive because providers can persist computed sensitive attributes. Use the protected GCS state bucket created by `bootstrap/state`.
+- `terraform apply` and secret population are operator-controlled actions; pull-request CI remains credential-free.
 
-## Versões de segredos esperadas
+## Expected secret versions
 
-Após a fase de fundação, inspecione `terraform output secret_bootstrap` e crie uma versão atual para cada secret ID retornado. O formato exato do payload é contrato da aplicação e permanece intencionalmente fora deste repositório de infraestrutura.
+After the foundation phase, inspect `terraform output secret_bootstrap` and create one current version for each returned secret ID. The exact payload format is an application contract and intentionally remains outside this infrastructure repository.
 
-## Validação
+## Validation
 
-O CI do repositório inicializa este root com `-backend=false`, usa o provider lock file commitado e executa gates Terraform format/validate/test, TFLint e Trivy. Nenhuma etapa de CI deve criar recursos Google Cloud com custo.
+Repository CI initializes this root with `-backend=false`, uses the committed provider lock file, and runs Terraform format/validate/test, TFLint, and Trivy gates. No CI step should create billable Google Cloud resources.

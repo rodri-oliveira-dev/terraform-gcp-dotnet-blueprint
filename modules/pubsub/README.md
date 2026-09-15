@@ -1,64 +1,64 @@
-# Módulo Pub/Sub
+# Pub/Sub module
 
-Módulo filho Terraform reutilizável para tópicos e subscriptions Google Cloud Pub/Sub, incluindo push autenticado, política de retry, encaminhamento dead-letter e subscription de inspeção da dead-letter.
+Reusable Terraform child module for Google Cloud Pub/Sub topics and subscriptions, including authenticated push delivery, retry policy, dead-letter forwarding, and a dead-letter inspection subscription.
 
-O módulo é focado em transporte. Não cria Cloud Run Services, identidades de runtime da aplicação, identidades publisher ou IAM de invocação do Cloud Run. Root modules compõem essas capacidades explicitamente.
+The module is transport-focused. It does not create Cloud Run services, application runtime identities, publisher identities, or Cloud Run invocation IAM. Root modules compose those capabilities explicitly.
 
-## Modos de entrega suportados
+## Supported delivery modes
 
-- **Pull:** deixe `push_config = null`.
-- **Push autenticado:** forneça endpoint HTTPS e service account gerenciada pelo usuário. Pub/Sub envia token OIDC em cada request push.
+- **Pull:** leave `push_config = null`.
+- **Authenticated push:** provide an HTTPS endpoint and a user-managed service account. Pub/Sub sends an OIDC token with each push request.
 
-Na arquitetura de referência, push autenticado tem como alvo Cloud Run Service orientado a requisições. Pub/Sub nunca é modelado como execução direta de Cloud Run Job.
+For the reference architecture, authenticated push targets a request-serving Cloud Run service. Pub/Sub is never modeled as directly executing a Cloud Run Job.
 
-Quando payload unwrapping está habilitado por `no_wrapper = true`, callers também podem habilitar `write_metadata = true` para expor metadados Pub/Sub como headers. O módulo rejeita `write_metadata = true` quando `no_wrapper = false`, pois Pub/Sub só aplica essa opção dentro da configuração de unwrapping.
+When payload unwrapping is enabled through `no_wrapper = true`, callers may also enable `write_metadata = true` to expose Pub/Sub metadata as request headers. The module rejects `write_metadata = true` when `no_wrapper = false`, because Pub/Sub only applies the metadata option inside the payload-unwrapping configuration.
 
-## Padrões de confiabilidade
+## Reliability defaults
 
-- acknowledgement deadline: 60 segundos;
-- retenção de mensagens: 7 dias;
-- subscriptions não expiram por inatividade;
-- retry backoff: 10 a 600 segundos;
-- dead lettering habilitado;
-- máximo de tentativas de entrega: 10;
-- uma pull subscription é criada no tópico dead-letter para inspeção/reprocessamento;
-- retenção de mensagens confirmadas e message ordering ficam desabilitados a menos que explicitamente habilitados.
+- acknowledgement deadline: 60 seconds;
+- message retention: 7 days;
+- subscriptions never expire from inactivity;
+- retry backoff: 10 to 600 seconds;
+- dead lettering enabled;
+- maximum delivery attempts: 10;
+- a pull subscription is created on the dead-letter topic for inspection/reprocessing;
+- acknowledged-message retention and message ordering are disabled unless explicitly enabled.
 
-Tentativas de dead-letter do Pub/Sub são best-effort. Consumers devem permanecer idempotentes e não tratar a contagem configurada como garantia exactly-once.
+Pub/Sub dead-letter delivery attempts are best-effort. Consumers must remain idempotent and should not treat the configured attempt count as an exactly-once guarantee.
 
-Quando nomes dead-letter são omitidos, o módulo deriva anexando `-dead-letter` aos nomes principais. Os nomes resultantes são validados contra o limite de 255 caracteres do Pub/Sub durante planning; callers com nomes longos devem fornecer nomes dead-letter explícitos e válidos.
+When dead-letter names are omitted, the module derives them by appending `-dead-letter` to the primary topic/subscription names. The resulting names are validated against Pub/Sub's 255-character limit during planning; callers with long primary names must provide explicit valid dead-letter names.
 
-Filtros de subscription são restritos a ASCII imprimível e máximo de 256 caracteres. Como ASCII imprimível usa um byte por caractere em UTF-8, isso aplica localmente o limite de 256 bytes e evita strings Unicode que passariam na contagem de caracteres, mas falhariam no provisionamento.
+Subscription filters are deliberately restricted to printable ASCII and at most 256 characters. Because printable ASCII is one byte per character in UTF-8, this enforces Pub/Sub's 256-byte filter limit locally and avoids Unicode strings that would pass a character-count check but fail at provisioning time.
 
-## Modelo IAM
+## IAM model
 
-Quando `manage_service_agent_iam = true` (padrão), o módulo concede somente as permissões exigidas pelo próprio Pub/Sub:
+When `manage_service_agent_iam = true` (default), the module grants only the permissions Pub/Sub itself needs:
 
-1. `roles/iam.serviceAccountTokenCreator` ao service agent gerenciado do Pub/Sub **na service account de push-auth configurada**, permitindo criação de tokens OIDC;
-2. `roles/pubsub.publisher` ao service agent Pub/Sub **no tópico dead-letter**;
-3. `roles/pubsub.subscriber` ao service agent Pub/Sub **na subscription principal**, permitindo ao encaminhamento dead-letter confirmar mensagens de origem.
+1. `roles/iam.serviceAccountTokenCreator` to the Google-managed Pub/Sub service agent **on the configured push-auth service account**, allowing it to mint OIDC tokens;
+2. `roles/pubsub.publisher` to the Pub/Sub service agent **on the dead-letter topic**;
+3. `roles/pubsub.subscriber` to the Pub/Sub service agent **on the primary subscription**, allowing dead-letter forwarding to acknowledge source messages.
 
-O módulo deliberadamente **não** concede `roles/run.invoker`. O root que compõe Pub/Sub com Cloud Run Service é responsável por essa relação IAM entre módulos.
+The module intentionally does **not** grant `roles/run.invoker`. The root that composes Pub/Sub with a Cloud Run service owns that cross-module IAM relationship.
 
-Três identidades permanecem distintas:
+Three identities therefore remain distinct:
 
-- **service account de runtime do worker** — anexada ao Cloud Run e usada pelo código da aplicação;
-- **service account de push-auth** — representada no token OIDC do Pub/Sub e autorizada a invocar o service alvo;
-- **service agent do Pub/Sub** — identidade gerenciada pelo Google usada para criar tokens push e encaminhar mensagens dead-letter.
+- **worker runtime service account** — attached to Cloud Run and used by application code;
+- **push-auth service account** — represented in the Pub/Sub OIDC token and granted permission to invoke the target service;
+- **Pub/Sub service agent** — Google-managed identity used to mint push tokens and forward dead-letter messages.
 
-## Pré-requisitos
+## Prerequisites
 
-Antes de aplicar root que consome este módulo:
+Before applying a root that consumes this module:
 
-- `pubsub.googleapis.com` deve estar habilitada;
-- service account de push-auth deve existir e, para push autenticado, estar no mesmo projeto da subscription;
-- identidade Terraform de deployment precisa de `iam.serviceAccounts.actAs` na service account de push-auth para anexá-la à subscription;
-- se o módulo gerencia IAM do service agent, a identidade de deployment também precisa atualizar IAM na service account push-auth, tópico dead-letter e subscription principal;
-- o root deve conceder à service account push-auth permissão para invocar o target, por exemplo `roles/run.invoker` em Cloud Run Service.
+- `pubsub.googleapis.com` must be enabled;
+- the push-auth service account must already exist and, for authenticated push, must be in the same project as the subscription;
+- the Terraform deployment identity must have `iam.serviceAccounts.actAs` on the push-auth service account to attach it to the subscription;
+- if this module manages service-agent IAM, the deployment identity also needs permission to update IAM on the push-auth service account, dead-letter topic, and primary subscription;
+- the root must grant the push-auth service account permission to invoke its target, for example `roles/run.invoker` on a Cloud Run service.
 
-Essas permissões devem ser concedidas no escopo do recurso quando suportado.
+These permissions should be granted at resource scope where the Google Cloud resource supports it.
 
-## Exemplo
+## Example
 
 ```hcl
 module "events" {
@@ -85,33 +85,33 @@ module "events" {
 }
 ```
 
-Consulte `examples/pubsub-worker` para composição com `modules/cloud-run-service` e IAM de Cloud Run invoker no escopo de recurso.
+See `examples/pubsub-worker` for composition with `modules/cloud-run-service` and resource-scoped Cloud Run invoker IAM.
 
 ## Inputs
 
-| Nome | Padrão | Descrição |
+| Name | Default | Description |
 | --- | --- | --- |
-| `project_id` | obrigatório | ID do projeto Google Cloud. |
-| `topic_name` | obrigatório | Nome do tópico principal. |
-| `subscription_name` | obrigatório | Nome da subscription principal. |
-| `ack_deadline_seconds` | `60` | Acknowledgement deadline inicial, 10–600 segundos. |
-| `message_retention_seconds` | `604800` | Retenção da subscription, 10 minutos a 31 dias. |
-| `retain_acked_messages` | `false` | Retém mensagens confirmadas para replay. |
-| `enable_message_ordering` | `false` | Preserva ordering para mensagens com a mesma ordering key. |
-| `filter` | `null` | Filtro opcional ASCII imprimível, máximo 256 bytes. |
-| `retry_policy` | `10..600s` | Backoff mínimo e máximo de redelivery. |
-| `dead_letter` | habilitado | Nomes DLQ, subscription de inspeção e máximo de tentativas. |
-| `push_config` | `null` | Endpoint HTTPS, service account push-auth, audience e opções de unwrapping. `write_metadata = true` exige `no_wrapper = true`. |
-| `manage_service_agent_iam` | `true` | Gerencia IAM de escopo restrito exigido pelo transporte Pub/Sub. |
-| `labels` | `{}` | Labels aplicados aos recursos Pub/Sub. |
+| `project_id` | required | Google Cloud project ID. |
+| `topic_name` | required | Primary topic name. |
+| `subscription_name` | required | Primary subscription name. |
+| `ack_deadline_seconds` | `60` | Initial acknowledgement deadline, 10-600 seconds. |
+| `message_retention_seconds` | `604800` | Subscription retention, 10 minutes through 31 days. |
+| `retain_acked_messages` | `false` | Retain acknowledged messages for replay. |
+| `enable_message_ordering` | `false` | Preserve ordering for messages sharing an ordering key. |
+| `filter` | `null` | Optional printable-ASCII subscription filter, maximum 256 bytes. |
+| `retry_policy` | `10..600s` | Minimum and maximum redelivery backoff. |
+| `dead_letter` | enabled | DLQ names, inspection subscription, and max attempts. Derived names are validated against Pub/Sub's 255-character limit. |
+| `push_config` | `null` | HTTPS endpoint, push-auth service account, optional audience and payload-unwrapping settings. `write_metadata = true` requires `no_wrapper = true`. |
+| `manage_service_agent_iam` | `true` | Manage narrowly scoped IAM required by Pub/Sub transport. |
+| `labels` | `{}` | Labels applied to Pub/Sub resources. |
 
 ## Outputs
 
-O módulo expõe IDs/nomes do tópico e subscription principais, nomes opcionais de recursos dead-letter, e-mail do service agent Pub/Sub e e-mail da service account push-auth configurada.
+The module exposes primary topic/subscription IDs and names, optional dead-letter resource names, the Pub/Sub service-agent email, and the configured push-auth service-account email.
 
-## Testes
+## Testing
 
-Testes em `tests/` usam mock provider e `command = plan`; não criam recursos Google Cloud nem exigem credenciais.
+Tests under `tests/` use Terraform's mock-provider support and `command = plan`; they do not create Google Cloud resources or require credentials.
 
 ```bash
 terraform init -backend=false
@@ -119,12 +119,14 @@ terraform validate
 terraform test
 ```
 
-## Fora de escopo
+## Out of scope
 
-- Cloud Run Services ou Jobs;
-- bindings Cloud Run `roles/run.invoker`;
-- service accounts de runtime da aplicação;
-- IAM de publisher;
-- segredos da aplicação;
-- Cloud Scheduler ou execução batch;
-- provider/backend específico de ambiente.
+This module does not create or manage:
+
+- Cloud Run services or jobs;
+- Cloud Run `roles/run.invoker` bindings;
+- application runtime service accounts;
+- publisher IAM;
+- application secrets;
+- Cloud Scheduler or batch-job execution;
+- environment-specific provider/backend configuration.

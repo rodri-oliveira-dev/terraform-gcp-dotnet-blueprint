@@ -1,72 +1,72 @@
 ---
 name: gcp-terraform-security
-description: Aplicar práticas de segurança do Google Cloud a state Terraform, IAM, Secret Manager, Workload Identity Federation, acesso público e autenticação de CI/CD neste repositório.
+description: Apply Google Cloud security practices to Terraform state, IAM, Secret Manager, Workload Identity Federation, public access, and CI/CD authentication in this repository.
 ---
 
-# Segurança GCP com Terraform
+# GCP Terraform Security
 
-Use esta skill sempre que mudanças Terraform envolverem identidade, autenticação, state, segredos, exposição de rede ou configuração sensível à segurança no Google Cloud.
+Use this skill whenever Terraform changes touch Google Cloud identity, authentication, state, secrets, networking exposure, or security-sensitive service configuration.
 
-## State Terraform
+## Terraform state
 
-- Use backend remoto Cloud Storage para ambientes compartilhados.
-- Trate state como sensível porque providers podem persistir atributos sensíveis mesmo quando outputs são marcados como sensitive.
-- Habilite proteções apropriadas no bucket, como prevenção de acesso público, uniform bucket-level access e versionamento.
-- Restrinja acesso ao state à identidade de deployment e administradores necessários.
-- Nunca faça commit de state local ou backups de state.
+- Use a remote Cloud Storage backend for shared environments.
+- Treat state as sensitive because providers may persist sensitive attributes even when outputs are marked sensitive.
+- Enable appropriate bucket protections such as public access prevention, uniform bucket-level access, and versioning for the state bucket.
+- Restrict state access to the deployment identity and necessary administrators.
+- Never commit local state or state backups.
 
-Faça bootstrap do bucket separadamente para que o backend não dependa de si mesmo.
+Bootstrap the state bucket separately so the backend does not depend on itself.
 
-## Autenticação de CI
+## CI authentication
 
-Para GitHub Actions, prefira Workload Identity Federation a chaves JSON de service account.
+For GitHub Actions, prefer Workload Identity Federation over service-account JSON keys.
 
-- Solicite `id-token: write` somente em jobs que autenticam por OIDC.
-- Mantenha `contents: read` a menos que um job comprovadamente precise de permissões mais amplas.
-- Restrinja federação com condições de atributos à organização/repositório GitHub confiáveis e, quando apropriado, branch ou environment.
-- Prefira claims de identidade estáveis e autoritativos.
-- Conceda ao principal federado ou service account impersonada somente as roles necessárias ao workflow.
+- Request `id-token: write` only in jobs that authenticate through OIDC.
+- Keep `contents: read` unless a job demonstrably needs broader repository permissions.
+- Restrict federation with attribute conditions to the trusted GitHub organization/repository and, where appropriate, branch or environment.
+- Prefer stable and authoritative identity claims.
+- Grant the federated principal or impersonated service account only the roles required by the workflow.
 
-Este repositório foi criado após o rollout de 15 de julho de 2026 dos subjects OIDC imutáveis padrão do GitHub para novos repositórios. Quando a configuração de confiança Google Cloud for alterada, inspecione o formato real do OIDC subject e prefira condições que preservem identificadores imutáveis de owner/repositório, em vez de enfraquecer a confiança para nomes reutilizáveis. Não copie exemplos legados `repo:owner/name:*` sem validar os claims emitidos para este repositório.
+This repository was created after GitHub's July 15, 2026 rollout of immutable default OIDC subjects for new repositories. When issue #4 configures Google Cloud trust, inspect the actual OIDC subject format and prefer conditions that preserve the immutable owner/repository identifiers rather than weakening trust back to reusable names only. Do not copy legacy `repo:owner/name:*` examples without validating the claims emitted for this repository.
 
-Não crie chaves de service account de longa duração como atalho de conveniência.
+Do not create long-lived service-account keys as a convenience workaround.
 
-## Semântica IAM
+## IAM semantics
 
-Compreenda a diferença entre recursos IAM autoritativos e aditivos antes de escolher.
+Understand the difference between authoritative and additive IAM resources before choosing one.
 
-- Prefira `google_*_iam_member` quando Terraform deve adicionar uma relação principal/role sem possuir toda a policy/binding.
-- Use `google_*_iam_binding` ou `google_*_iam_policy` autoritativos somente quando a configuração intencionalmente possuir todo o escopo e o impacto estiver documentado.
-- Evite roles amplas no projeto quando houver role mais restrita no nível do recurso.
-- Mantenha identidades de runtime específicas por workload quando prático.
+- Prefer `google_*_iam_member` when Terraform should add one principal/role relationship without owning the entire policy/binding.
+- Use authoritative `google_*_iam_binding` or `google_*_iam_policy` only when the configuration intentionally owns that complete scope and the impact is documented.
+- Avoid broad project roles when a narrower resource-level role is available.
+- Keep runtime identities workload-specific where practical.
 
 ## Secret Manager
 
-Terraform pode criar containers de segredos, IAM bindings e referências. Payloads de segredos da aplicação não devem ser hard-coded em Terraform versionado.
+Terraform may create secret containers, IAM bindings, and secret references. Application secret payloads must not be hard-coded in source-controlled Terraform.
 
-Conceda acesso somente aos workloads que necessitam. Não exponha valores de segredos em outputs comuns.
+Grant secret access only to the workloads that require it. Do not expose secret values through ordinary outputs.
 
-## Exposição pública
+## Public exposure
 
-Use privado/sem acesso público por padrão. Se Cloud Run Service ou outro recurso precisar ser público no cenário de referência, torne a exposição explícita, documentada e de escopo restrito.
+Default to private/no-public-access. If a Cloud Run service or other resource must become public for the reference scenario, make the exposure explicit, documented, and narrowly scoped.
 
-## Plans e mutação real
+## Plans and live mutation
 
-Revise plans Terraform antes do apply, especialmente para IAM, políticas de bucket, service accounts e recursos cuja substituição pode causar indisponibilidade ou perda de dados.
+Review Terraform plans before apply, especially for IAM, bucket policies, service accounts, and resources whose replacement may cause downtime or data loss.
 
-Nunca execute `terraform apply`, `destroy`, force-unlock, remoção de state ou mudanças IAM destrutivas sem autorização explícita do usuário.
+Never run `terraform apply`, `destroy`, force-unlock, state removal, or destructive IAM changes without explicit user authorization.
 
-## Checklist de revisão
+## Review checklist
 
-- O state remoto está protegido e isolado adequadamente?
-- Existem credential files ou caminhos de autenticação de CI baseados em chaves?
-- A federação está restrita a identidades GitHub confiáveis usando claims OIDC imutáveis reais quando disponíveis?
-- Mudanças IAM são aditivas, salvo quando ownership autoritativo é intencional?
-- Payloads de segredos estão ausentes do source Terraform e outputs?
-- Acesso público está desabilitado salvo quando explicitamente necessário?
-- A mudança pode substituir ou revogar infraestrutura/permissões compartilhadas sem intenção?
+- Is remote state protected and isolated appropriately?
+- Are there any credential files or key-based CI authentication paths?
+- Is federation restricted to trusted GitHub identities using the repository's actual immutable OIDC claims where available?
+- Are IAM changes additive unless authoritative ownership is intentional?
+- Are secret payloads absent from Terraform source and outputs?
+- Is public access disabled unless explicitly required?
+- Could the change unintentionally replace or revoke shared infrastructure/permissions?
 
-## Referências
+## References
 
 - https://cloud.google.com/docs/terraform/best-practices/security
 - https://cloud.google.com/docs/terraform/best-practices/operations

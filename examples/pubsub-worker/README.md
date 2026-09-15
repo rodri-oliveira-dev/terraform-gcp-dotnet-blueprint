@@ -1,49 +1,49 @@
-# Exemplo de worker Pub/Sub push
+# Pub/Sub push worker example
 
-Este root demonstra isoladamente o padrão de worker orientado a eventos:
+This root demonstrates the event-driven worker pattern in isolation:
 
 ```text
 Publisher
    |
    v
-Tópico Pub/Sub
+Pub/Sub topic
    |
    v
-Push subscription autenticada
+Authenticated push subscription
    |
    v
-Cloud Run Service (worker .NET)
+Cloud Run Service (.NET worker)
    |
-   +--> sucesso: HTTP 2xx confirma a mensagem
+   +--> success: HTTP 2xx acknowledges the message
    |
-   +--> falha repetida: tópico dead-letter --> subscription de inspeção
+   +--> repeated failure: dead-letter topic --> inspection subscription
 ```
 
-O alvo é deliberadamente um **Cloud Run Service**, não Cloud Run Job. Entrega push do Pub/Sub exige endpoint HTTP que atenda requisições; execução batch finita é modelada separadamente com o padrão Cloud Run Job/Scheduler.
+The target is deliberately a **Cloud Run Service**, not a Cloud Run Job. Pub/Sub push delivery requires a request-serving HTTP endpoint; finite batch execution is modeled separately with the Cloud Run Job/Scheduler pattern.
 
-## Separação de identidades
+## Identity separation
 
-O exemplo exige duas service accounts existentes gerenciadas pelo usuário:
+The example requires two pre-existing user-managed service accounts:
 
-- `worker_runtime_service_account` é anexada à revision Cloud Run e representa o código da aplicação em runtime;
-- `push_service_account` é usada pelo Pub/Sub para autenticar requests push e recebe somente `roles/run.invoker` neste worker.
+- `worker_runtime_service_account` is attached to the Cloud Run revision and represents application code at runtime;
+- `push_service_account` is used by Pub/Sub to authenticate push requests and receives only `roles/run.invoker` on this worker service.
 
-O módulo Pub/Sub usa separadamente o service agent do Pub/Sub gerenciado pelo Google para criação de tokens OIDC e encaminhamento dead-letter. Esse service agent recebe somente as permissões no escopo dos recursos necessárias às operações de transporte.
+The Pub/Sub module separately uses the Google-managed Pub/Sub service agent for OIDC token minting and dead-letter forwarding. It grants that service agent only the resource-scoped permissions required for those transport operations.
 
-## Pré-requisitos
+## Prerequisites
 
-- versão Terraform definida em `.terraform-version`;
-- `run.googleapis.com` e `pubsub.googleapis.com` habilitadas;
-- service account de runtime do worker existente;
-- service account push-auth existente no mesmo projeto;
-- deployer autorizado a criar recursos Cloud Run/Pub/Sub, anexar a service account push-auth e gerenciar as relações IAM restritas demonstradas aqui;
-- imagem de container cujo endpoint HTTP entenda o envelope padrão de push Pub/Sub e retorne sucesso somente após processamento bem-sucedido.
+- Terraform version from the repository `.terraform-version`;
+- `run.googleapis.com` and `pubsub.googleapis.com` enabled;
+- an existing worker runtime service account;
+- an existing push-auth service account in the same project;
+- a deployer allowed to create Cloud Run/Pub/Sub resources, attach the push-auth service account, and manage the narrow IAM relationships demonstrated here;
+- a container image whose HTTP endpoint understands the standard Pub/Sub push envelope and returns success only after processing succeeds.
 
-O exemplo não cria service accounts porque o ciclo de vida das identidades pertence à fundação IAM, não aos módulos de workload.
+The example does not create service accounts because runtime identity lifecycle belongs to the IAM foundation rather than workload modules.
 
-## Uso
+## Usage
 
-Forneça variáveis por arquivo `.tfvars` local ignorado ou outro mecanismo seguro:
+Provide variables through an ignored local `.tfvars` file or another secure mechanism:
 
 ```hcl
 project_id                     = "my-project"
@@ -53,30 +53,30 @@ worker_runtime_service_account = "orders-worker@my-project.iam.gserviceaccount.c
 push_service_account           = "orders-push@my-project.iam.gserviceaccount.com"
 ```
 
-Validação sem backend real:
+Validation without a live backend:
 
 ```bash
 terraform init -backend=false -lockfile=readonly
 terraform validate
 ```
 
-Aplicar este exemplo cria recursos Google Cloud/mudanças IAM e pode gerar custos. CI e agentes não devem executar `terraform apply` sem autorização explícita.
+Applying this example creates Google Cloud resources/IAM changes and can incur cost. CI and agents must not run `terraform apply` unless explicitly authorized.
 
-## Comportamento de confiabilidade
+## Reliability behavior
 
-O exemplo usa valores limitados de acknowledgement, retry, retenção e dead-letter. O worker deve ser idempotente: entrega Pub/Sub push/dead-letter não é contrato exactly-once e a contagem configurada de tentativas é best effort.
+The example uses bounded acknowledgement, retry, retention and dead-letter settings. The worker must be idempotent: Pub/Sub push/dead-letter delivery is not an exactly-once processing contract, and configured delivery-attempt counts are best effort.
 
-## Ingress do Cloud Run
+## Cloud Run ingress
 
-O módulo Cloud Run reutilizado usa ingress restritivo por padrão. O push Pub/Sub deve ficar no mesmo projeto Google Cloud do worker para que o service permaneça não público com entrega autenticada. A identidade push também é restrita por `roles/run.invoker` somente a este service.
+The reused Cloud Run service module defaults to restrictive ingress. Pub/Sub push is intended to stay in the same Google Cloud project as this worker so the service can remain non-public while using authenticated delivery. The push identity is additionally constrained by `roles/run.invoker` on only this service.
 
-## O que este exemplo isolado omite intencionalmente
+## What this isolated example intentionally omits
 
-- publishers ou IAM de publisher;
-- segredos da aplicação;
-- integração VPC/Redis;
-- Cloud Run Jobs e Cloud Scheduler;
-- state/backends remotos de ambiente;
-- composição de políticas de alerta no nível do ambiente.
+- publishers or publisher IAM;
+- application secrets;
+- VPC/Redis integration;
+- Cloud Run Jobs and Cloud Scheduler;
+- remote environment state/backends;
+- environment-level alert policy composition.
 
-Essas capacidades são implementadas pelos roots completos em `environments/dev` e `environments/prod`. Use este exemplo apenas para compreender o limite Pub/Sub/worker; use os ambientes para a arquitetura de referência completa.
+Those capabilities are implemented by the complete roots under `environments/dev` and `environments/prod`. Use this example only to understand the Pub/Sub/worker module boundary; use the environment roots for the full reference architecture.

@@ -1,28 +1,28 @@
-# Módulo Memorystore for Redis
+# Memorystore for Redis module
 
-Módulo filho Terraform reutilizável para instância Memorystore for Redis segura e privada usada pelos workloads .NET de referência.
+Reusable Terraform child module for a secure, private Memorystore for Redis instance used by the reference .NET workloads.
 
-O módulo é responsável apenas pela instância Redis. Criação de VPC, Private Service Access, Cloud Run Direct VPC egress, identidades de runtime, payloads Secret Manager e composição de ambiente permanecem fora deste módulo.
+The module owns only the Redis instance. VPC creation, Private Service Access, Cloud Run Direct VPC egress, runtime identities, Secret Manager payloads, and environment composition remain outside this module.
 
-## Padrões seguros
+## Secure defaults
 
-O módulo sobrescreve deliberadamente diversos defaults permissivos do provider:
+The module deliberately overrides several permissive provider defaults:
 
-- `connect_mode = "PRIVATE_SERVICE_ACCESS"` é fixo;
-- VPC completa e explícita é obrigatória, evitando seleção implícita da default network;
-- `tier = "STANDARD_HA"` por padrão;
-- `redis_version = "REDIS_7_2"` por padrão;
-- Redis AUTH habilitado por padrão;
-- criptografia em trânsito usa `SERVER_AUTHENTICATION` por padrão;
-- `deletion_policy = "PREVENT"` por padrão.
+- `connect_mode = "PRIVATE_SERVICE_ACCESS"` is fixed by the module;
+- an explicit fully qualified VPC network is required, so the Google Cloud default network is never selected implicitly;
+- `tier = "STANDARD_HA"` by default;
+- `redis_version = "REDIS_7_2"` by default;
+- Redis AUTH is enabled by default;
+- in-transit encryption defaults to `SERVER_AUTHENTICATION`;
+- `deletion_policy = "PREVENT"` by default.
 
-`BASIC` continua disponível para ambientes explicitamente mais baratos, mas selecioná-lo não desabilita AUTH nem TLS.
+`BASIC` remains available for explicitly lower-cost environments, but selecting it does not disable AUTH or TLS.
 
-## Contrato de rede
+## Networking contract
 
-A instância usa Private Service Access em vez de direct VPC peering. O caller deve estabelecer a conexão Service Networking antes da instância Redis.
+The instance uses Private Service Access rather than direct VPC peering. The caller must establish the Service Networking connection before the Redis instance is created.
 
-Com o módulo de rede do repositório, componha a dependência explicitamente:
+With the repository network module, compose the dependency explicitly:
 
 ```hcl
 module "cache" {
@@ -37,21 +37,21 @@ module "cache" {
 }
 ```
 
-O `depends_on` é intencional: `authorized_network` cria dependência de dados na VPC, mas a API Redis também exige a conexão Private Service Access separada primeiro.
+The `depends_on` is intentional: `authorized_network` creates a data-flow dependency on the VPC, but the Redis API also requires the separate Private Service Access connection to be established first.
 
-O módulo não cria `reserved_ip_range` dedicado. Com Private Service Access, Memorystore escolhe range disponível da alocação Service Networking estabelecida por `modules/vpc-network`.
+The module does not create a dedicated `reserved_ip_range`. With Private Service Access, Memorystore selects an available instance range from the service networking allocation established by `modules/vpc-network`.
 
-## AUTH, TLS e state sensível
+## AUTH, TLS, and sensitive state
 
-Redis AUTH e TLS resolvem problemas diferentes. AUTH exige autenticação do cliente; TLS protege tráfego em trânsito. Ambos são habilitados por padrão.
+Redis AUTH and TLS solve different problems. AUTH requires clients to authenticate; TLS protects client/server traffic in transit. Both are enabled by default.
 
-Memorystore gera a AUTH string. Este módulo intencionalmente **não** expõe `google_redis_instance.auth_string` como output e não cria versão Secret Manager. Operador/processo confiável deve recuperar e distribuir esse material de acordo com o ciclo de vida de segredos da aplicação.
+Memorystore generates the AUTH string. This module intentionally does **not** expose `google_redis_instance.auth_string` as an output and does not create a Secret Manager version from it. A trusted operator or delivery process should retrieve and distribute the AUTH material according to the application's secret lifecycle.
 
-O provider Google ainda pode persistir atributos Redis calculados e sensíveis no state Terraform. Trate o state como sensível mesmo que outputs exponham apenas metadados não secretos. O bootstrap de state remoto é o limite de segurança para isso.
+The Google provider can still persist provider-computed sensitive Redis attributes in Terraform state. Treat the state as sensitive even though the module outputs only non-secret endpoint metadata. The repository's remote-state bootstrap is the security boundary for that state.
 
-Com TLS, clientes devem suportar TLS 1.2 ou superior e confiar na server CA do Memorystore. Recuperação/instalação da CA é responsabilidade da aplicação/operador; payloads de certificado não são outputs.
+When TLS is enabled, clients must support TLS 1.2 or later and trust the Memorystore server CA. CA retrieval/installation is an application/operator concern and certificate payloads are intentionally not emitted as module outputs.
 
-## Uso
+## Usage
 
 ```hcl
 module "cache" {
@@ -71,31 +71,31 @@ module "cache" {
 }
 ```
 
-Para posicionamento zonal determinístico em `STANDARD_HA`, callers podem definir `location_id` e `alternative_location_id` diferentes. Se omitidos, Google Cloud escolhe as zonas.
+For deterministic zonal placement on `STANDARD_HA`, callers may set different `location_id` and `alternative_location_id` values. If they are omitted, Google Cloud selects zones.
 
 ## Inputs
 
-| Nome | Padrão | Descrição |
+| Name | Default | Description |
 | --- | --- | --- |
-| `project_id` | obrigatório | Projeto Google Cloud contendo Redis. |
-| `name` | obrigatório | ID da instância Redis, 1–40 caracteres conforme contrato do serviço. |
-| `region` | obrigatório | Região Redis. |
-| `display_name` | `null` | Nome legível opcional. |
-| `authorized_network` | obrigatório | ID completo da VPC. |
-| `memory_size_gb` | `1` | Capacidade Redis de 1–300 GiB. |
-| `tier` | `STANDARD_HA` | `STANDARD_HA` ou `BASIC` explícito. |
-| `redis_version` | `REDIS_7_2` | Versão moderna: 6.x, 7.0 ou 7.2. |
-| `auth_enabled` | `true` | Habilita Redis AUTH. |
-| `transit_encryption_mode` | `SERVER_AUTHENTICATION` | Modo TLS. |
-| `location_id` | `null` | Zona primária opcional. |
-| `alternative_location_id` | `null` | Zona secundária opcional para `STANDARD_HA`. |
-| `redis_configs` | `{}` | Valores suportados de configuração Redis. |
-| `labels` | `{}` | Labels do recurso. |
-| `deletion_policy` | `PREVENT` | Guard de ciclo destrutivo; `DELETE` somente por escolha explícita. |
+| `project_id` | required | Google Cloud project containing the Redis instance. |
+| `name` | required | Redis instance ID, validated against the 1-40 character service contract. |
+| `region` | required | Redis region. |
+| `display_name` | `null` | Optional human-readable name. |
+| `authorized_network` | required | Fully qualified VPC network resource ID. |
+| `memory_size_gb` | `1` | Redis capacity from 1 through 300 GiB. |
+| `tier` | `STANDARD_HA` | `STANDARD_HA` or explicitly `BASIC`. |
+| `redis_version` | `REDIS_7_2` | Modern Redis version: 6.x, 7.0, or 7.2. |
+| `auth_enabled` | `true` | Enables Redis AUTH. |
+| `transit_encryption_mode` | `SERVER_AUTHENTICATION` | TLS mode. |
+| `location_id` | `null` | Optional primary zone. |
+| `alternative_location_id` | `null` | Optional secondary zone for `STANDARD_HA`. |
+| `redis_configs` | `{}` | Supported Memorystore Redis configuration values. |
+| `labels` | `{}` | Resource labels. |
+| `deletion_policy` | `PREVENT` | Destructive lifecycle guard; `DELETE` is allowed only by explicit caller choice. |
 
 ## Outputs
 
-O módulo expõe somente metadados não secretos de integração:
+The module exposes only non-secret integration metadata:
 
 - `id`;
 - `name`;
@@ -107,11 +107,11 @@ O módulo expõe somente metadados não secretos de integração:
 - `authorized_network`;
 - `connection = { host, port, tls_enabled, auth_required }`.
 
-Não expõe Redis AUTH string nem payloads de server CA.
+It intentionally does not output the Redis AUTH string or server CA certificate payloads.
 
-## Testes
+## Testing
 
-Testes em `tests/` usam mocks do provider e modo plan, sem credenciais nem infraestrutura real.
+Tests under `tests/` use Terraform provider mocks and plan mode. They require no Google Cloud credentials and create no infrastructure.
 
 ```bash
 terraform init -backend=false
@@ -119,14 +119,14 @@ terraform validate
 terraform test
 ```
 
-## Fora de escopo
+## Out of scope
 
-- Memorystore for Redis Cluster ou Valkey;
-- autenticação IAM para Redis Cluster;
+- Memorystore for Redis Cluster or Valkey;
+- IAM authentication for Redis Cluster;
 - read-replica scaling;
-- configuração de persistência;
-- versões Secret Manager contendo AUTH gerada;
-- distribuição do certificado CA;
-- configuração da aplicação/cliente;
-- criação de VPC, Private Service Access, NAT ou firewall;
-- provider/backend específico de ambiente.
+- persistence configuration;
+- Secret Manager versions containing the generated AUTH string;
+- CA certificate distribution;
+- application/client configuration;
+- VPC, Private Service Access, NAT, or firewall creation;
+- environment-specific provider/backend configuration.

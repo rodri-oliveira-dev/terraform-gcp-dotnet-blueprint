@@ -1,104 +1,104 @@
-# Ambiente de produção
+# Production environment
 
-Este root compõe os módulos reutilizáveis como contraparte de produção de `environments/dev`.
+This root composes the reusable modules into the production counterpart of `environments/dev`.
 
-Ele mantém os mesmos limites arquiteturais de desenvolvimento, aplicando políticas explícitas de sizing, disponibilidade, retry, isolamento de state e observabilidade orientadas a produção.
+It keeps the same architectural boundaries as development while applying explicit production-oriented sizing, availability, retry, state-isolation, and observability policy.
 
-## Diferenças de política de produção
+## Production policy differences
 
-Em comparação com `dev`, este root usa:
+Compared with `dev`, this root uses:
 
-- prefixo GCS de backend separado: `environments/prod`;
-- VPC, subnet, range Private Service Access, service accounts, segredos, recursos de mensageria e workloads separados;
-- Memorystore `STANDARD_HA` em vez de `BASIC`;
-- 5 GiB de capacidade Redis por padrão, configurável por `redis_memory_size_gb`;
-- API: 2 vCPU / 1 GiB, mínimo 1 instância, máximo 20;
-- worker: 1 vCPU / 1 GiB, mínimo 1 instância, máximo 20;
-- threshold de dead-letter Pub/Sub de 20 tentativas e retry backoff até 600 segundos;
-- batch: 4 tasks, parallelism 2, 2 vCPU / 2 GiB, 5 retries por task, timeout de 30 minutos;
-- retry count do Scheduler de 5;
-- thresholds de observabilidade mais rígidos que desenvolvimento.
+- a separate GCS backend prefix: `environments/prod`;
+- separate VPC, subnet, Private Service Access range, service accounts, secrets, messaging resources, and workloads;
+- Memorystore `STANDARD_HA` instead of `BASIC`;
+- 5 GiB Redis capacity by default, configurable through `redis_memory_size_gb`;
+- API: 2 vCPU / 1 GiB, minimum 1 instance, maximum 20;
+- worker: 1 vCPU / 1 GiB, minimum 1 instance, maximum 20;
+- Pub/Sub dead-letter threshold of 20 attempts and retry backoff up to 600 seconds;
+- batch: 4 tasks, parallelism 2, 2 vCPU / 2 GiB, 5 task retries, 30-minute task timeout;
+- Scheduler retry count of 5;
+- stricter observability thresholds than development.
 
-Estes são padrões de referência, não requisitos universais de produção. Planejamento de capacidade, SLOs, perfil de tráfego, objetivos de recovery e orçamento devem orientar valores finais em sistema real.
+These are reference defaults rather than universal production requirements. Capacity planning, SLOs, traffic profile, recovery objectives, and budget should drive final values in a real system.
 
-## Deployment em duas fases
+## Two-phase deployment
 
-Payloads de segredos da aplicação e material AUTH/CA gerado pelo Memorystore ficam fora do Terraform, portanto produção usa o mesmo processo controlado em duas fases de desenvolvimento:
+Application secret payloads and Memorystore-generated AUTH/CA material remain outside Terraform, so production uses the same controlled two-phase process as development:
 
-1. Mantenha `enable_workloads = false` e aplique a fundação: APIs, rede, Redis, identidades, metadados Secret Manager e IAM.
-2. Popule as versões Secret Manager listadas por `terraform output secret_bootstrap` usando processo confiável. Nunca registre nem commite payloads Redis AUTH ou CA.
-3. Defina `enable_workloads = true`, revise o plan completo de produção, obtenha a aprovação necessária e aplique workloads e políticas de alerta.
+1. Keep `enable_workloads = false` and apply the foundation: APIs, networking, Redis, identities, Secret Manager metadata, and IAM.
+2. Populate the Secret Manager versions listed by `terraform output secret_bootstrap` using a trusted process. Never log or commit Redis AUTH or CA payloads.
+3. Set `enable_workloads = true`, review the complete production plan, obtain the required approval, and apply the workloads and alert policies.
 
-Isso evita `terraform -target` como modelo normal de deployment e impede que variables/source Terraform carreguem payloads de segredos. Depois que os workloads de produção forem ativados neste state, mudar `enable_workloads` de volta para false é intencionalmente rejeitado pelo activation lock.
+This avoids using `terraform -target` as the normal deployment model and prevents Terraform variables/source from carrying application secret payloads. Once production workloads have been activated in this state, changing `enable_workloads` back to false is intentionally rejected by the activation lock.
 
-## Observabilidade
+## Observability
 
-Padrões de produção:
+Production defaults are:
 
-- taxa HTTP 5xx do Cloud Run: 5%;
-- mensagem Pub/Sub não confirmada mais antiga: 300 segundos;
-- uso de memória de dados/sistema Redis: 80%;
-- qualquer encaminhamento dead-letter, execução Cloud Run Job com falha ou conexão Redis rejeitada permanece alertável.
+- Cloud Run HTTP 5xx ratio: 5%;
+- oldest unacknowledged Pub/Sub message: 300 seconds;
+- Redis data-memory and system-memory usage: 80%;
+- any dead-letter forwarding, failed Cloud Run Job execution, or rejected Redis connection remains alertable.
 
-`observability_notification_channels` aceita somente nomes de recursos de canais existentes do Cloud Monitoring. E-mails, webhook URLs, chaves de integração PagerDuty e configuração similar de destino devem ser gerenciados fora deste root.
+`observability_notification_channels` accepts only existing Cloud Monitoring channel resource names. E-mail addresses, webhook URLs, PagerDuty integration keys, and similar destination configuration must be owned outside this root.
 
-Esses thresholds são baselines operacionais, não compromissos SLO. Defina SLIs/SLOs de produto independentemente e use burn-rate alerting somente quando houver SLI confiável e meta definida. Consulte `../../docs/observability.md` para o modelo operacional completo.
+These alert thresholds are operational baselines, not SLO commitments. Define product SLIs/SLOs independently and use burn-rate alerting only when a trustworthy SLI and target exist. See `../../docs/observability.md` for the full operating model.
 
-## State remoto
+## Remote state
 
-Produção possui prefixo fixo de state:
+Production has a fixed state prefix:
 
 ```hcl
 prefix = "environments/prod"
 ```
 
-Inicialize o backend com o bucket protegido criado por `bootstrap/state`:
+Initialize the backend with the protected bucket created by `bootstrap/state`:
 
 ```bash
 terraform init \
   -backend-config="bucket=YOUR_TERRAFORM_STATE_BUCKET"
 ```
 
-Para validação sem credenciais:
+For credential-free validation:
 
 ```bash
 terraform init -backend=false
 terraform validate
 ```
 
-Os prefixos `dev` e `prod` nunca devem ser reutilizados para outro ambiente.
+The `dev` and `prod` prefixes must never be reused for another environment.
 
-## Configuração
+## Configuration
 
-Copie o arquivo de exemplo localmente e mantenha tfvars reais fora do commit:
+Copy the example file locally and keep real tfvars uncommitted:
 
 ```bash
 cp terraform.tfvars.example terraform.tfvars
 ```
 
-Revise pelo menos:
+Review at least:
 
-- `project_id` de produção;
-- image digests imutáveis ou release tags revisadas;
-- alocação de CIDR e sobreposição com rotas existentes;
+- production `project_id`;
+- immutable image digests or reviewed release tags;
+- CIDR allocation and overlap with existing routes;
 - `redis_memory_size_gb`;
-- schedule e time zone do batch;
-- thresholds de alerta de produção e nomes de recursos dos canais de notificação;
-- labels de ownership/custo.
+- batch schedule and time zone;
+- production alert thresholds and notification-channel resource names;
+- ownership/cost labels.
 
-## Limites de segurança
+## Security boundaries
 
-- A API permanece autenticada e não pública por padrão; não existe grant `allUsers`.
-- API, worker e batch usam identidades de runtime independentes.
-- Pub/Sub push e Scheduler usam identidades dedicadas de transporte/trigger.
-- Acesso publisher da API é restrito ao tópico de eventos de produção.
-- Acesso a segredos é concedido em recursos individuais Secret Manager.
-- Todos os workloads usam Direct VPC egress para alcançar a instância Redis de produção.
-- Destinos de canais de notificação não são armazenados nesta configuração de ambiente.
-- Payloads Redis AUTH e CA nunca são expostos como outputs Terraform.
-- Valores sensíveis calculados pelo provider podem existir no state Terraform, portanto o bucket GCS faz parte do limite de segurança.
-- Apply de produção permanece ação do operador/processo aprovado; validação de pull request é sem credenciais.
+- The API remains authenticated and non-public by default; there is no `allUsers` grant.
+- API, worker, and batch use independent runtime identities.
+- Pub/Sub push and Scheduler use dedicated transport/trigger identities.
+- API publisher access is scoped to the production event topic.
+- Secret access is granted on individual Secret Manager resources.
+- All workloads use Direct VPC egress to reach the production Redis instance.
+- Notification-channel destinations are not stored in this environment configuration.
+- Redis AUTH and CA payloads are never exposed as Terraform outputs.
+- Provider-computed sensitive values can exist in Terraform state, so the GCS state bucket is part of the security boundary.
+- Production apply remains an operator/approved delivery action; pull-request validation is credential-free.
 
-## Validação
+## Validation
 
-O CI do repositório valida este root com provider lock file commitado e `terraform init -backend=false`, seguido por Terraform validation, formatting, tests, TFLint e Trivy. CI não deve criar recursos de produção.
+Repository CI validates this root with the committed provider lock file and `terraform init -backend=false`, followed by Terraform validation, formatting, tests, TFLint, and Trivy. CI must not create production resources.

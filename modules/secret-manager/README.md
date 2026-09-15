@@ -1,25 +1,25 @@
-# Módulo Secret Manager
+# Secret Manager module
 
-Cria um recurso de **metadados** do Google Cloud Secret Manager e grants opcionais de acesso no escopo do recurso para service accounts de workloads.
+Creates one Google Cloud Secret Manager secret **metadata resource** and optional resource-scoped access grants for workload service accounts.
 
-O módulo intencionalmente não cria versões de segredos e não possui input para payloads. Valores de segredos da aplicação devem ser adicionados por processo separado controlado pelo operador/entrega, evitando que configuração e state Terraform se tornem system of record de credenciais.
+The module intentionally does not create secret versions and has no input for secret payloads. Application secret values must be added through a separate operator-controlled or delivery process so Terraform configuration and state do not become the system of record for credentials.
 
-## Modelo de segurança
+## Security model
 
-- deletion protection habilitada por padrão;
-- replication automática por padrão, com locations gerenciadas pelo usuário opcionalmente;
-- nenhum principal recebe acesso por padrão;
-- service accounts configuradas recebem apenas `roles/secretmanager.secretAccessor` neste segredo específico;
-- nenhuma role Secret Manager no projeto inteiro é criada;
-- não existe recurso `google_secret_manager_secret_version` neste módulo.
+- deletion protection is enabled by default;
+- automatic replication is the default, with optional user-managed locations;
+- no principal receives access by default;
+- configured workload service accounts receive only `roles/secretmanager.secretAccessor` on this specific secret;
+- no project-wide Secret Manager role is created;
+- no `google_secret_manager_secret_version` resource exists in this module.
 
-Google Cloud recomenda conceder permissões Secret Manager no menor nível de recurso prático. Por isso o módulo usa recursos aditivos `google_secret_manager_secret_iam_member` no segredo individual.
+Google Cloud recommends granting Secret Manager permissions at the lowest resource level practical. This module therefore uses additive `google_secret_manager_secret_iam_member` resources on the individual secret.
 
-## Identidade estável de accessors
+## Stable accessor identity
 
-`accessor_service_accounts` é um map cujas **chaves são identificadores estáveis escolhidos pelo caller** e os valores são e-mails de service accounts. Recursos IAM usam somente as chaves estáveis para identidade de `for_each`.
+`accessor_service_accounts` is a map whose **keys are caller-chosen stable identifiers** and whose values are service account emails. The IAM resources use only the stable keys for `for_each` identity.
 
-Isso é importante quando o e-mail vem de outro recurso/módulo e está unknown no plan inicial. E-mails computados permanecem valores do map, onde valores unknown são válidos, em vez de virar chaves de `for_each` que Terraform precisa conhecer antes de planejar instâncias.
+This is important when the email comes from another Terraform resource or module and is therefore unknown during the initial plan. Computed emails remain map values, where unknown values are valid, instead of becoming `for_each` keys that Terraform must know before planning resource instances.
 
 ```hcl
 accessor_service_accounts = {
@@ -27,9 +27,9 @@ accessor_service_accounts = {
 }
 ```
 
-Mantenha as chaves estáticas e semanticamente ligadas ao limite do workload; não derive de atributos computados.
+Keep the keys static and semantically tied to the workload boundary; do not derive them from computed resource attributes.
 
-## Exemplo
+## Example
 
 ```hcl
 module "database_secret" {
@@ -55,31 +55,31 @@ module "api" {
 }
 ```
 
-A versão referenciada por `secret_reference.version` deve existir quando o workload iniciar. Por padrão o módulo expõe o alias `latest`; callers podem fornecer versão numérica ou alias via `reference_version` sem Terraform criar ou ler payload.
+The secret version referenced by `secret_reference.version` must already exist when the workload starts. By default the module exposes the `latest` alias; callers can provide a numeric version or alias through `reference_version` without Terraform creating or reading the payload.
 
 ## Inputs
 
-| Nome | Padrão | Descrição |
+| Name | Default | Description |
 | --- | --- | --- |
-| `project_id` | obrigatório | Projeto que contém o segredo. |
-| `secret_id` | obrigatório | ID do segredo, 1–255 letras/dígitos/hífens/underscores. |
-| `accessor_service_accounts` | `{}` | IDs estáveis do caller mapeados a e-mails de service accounts com accessor somente neste segredo. |
-| `replication_locations` | `[]` | Vazio para replication automática; caso contrário, locations gerenciadas pelo usuário. |
-| `reference_version` | `latest` | Versão/alias exposto aos consumers Cloud Run. |
-| `deletion_protection` | `true` | Impede exclusão acidental dos metadados por Terraform. |
-| `labels` | `{}` | Labels do segredo. |
+| `project_id` | required | Project containing the secret. |
+| `secret_id` | required | Secret ID, 1-255 letters/digits/hyphens/underscores. |
+| `accessor_service_accounts` | `{}` | Stable caller-chosen IDs mapped to workload service account emails granted accessor on this secret only. |
+| `replication_locations` | `[]` | Empty for automatic replication; otherwise user-managed locations. |
+| `reference_version` | `latest` | Version/alias exposed to Cloud Run consumers. |
+| `deletion_protection` | `true` | Prevent accidental Terraform deletion of secret metadata. |
+| `labels` | `{}` | Labels applied to the secret. |
 
 ## Outputs
 
-- `secret_id` — adequado a referências Secret Manager do Cloud Run;
-- `name` — nome completo do recurso Secret Manager;
-- `secret_reference` — objeto `{ secret, version }` compatível com contratos de environment variables de segredo dos módulos Cloud Run;
-- `accessor_service_accounts` — IDs estáveis mapeados aos principals com acesso concedido.
+- `secret_id` — suitable for Cloud Run Secret Manager references;
+- `name` — fully qualified Secret Manager resource name;
+- `secret_reference` — `{ secret, version }` object directly compatible with the existing Cloud Run service/job secret environment-variable contracts;
+- `accessor_service_accounts` — stable accessor IDs mapped to the principals granted access.
 
-## Ownership das versões dos segredos
+## Secret version ownership
 
-Versões ficam deliberadamente fora do Terraform. Operadores ou workflow dedicado de entrega são responsáveis por criar, rotacionar, desabilitar e destruir versões. A identidade de runtime recebe somente permissão de leitura do payload; não recebe permissão para adicionar ou gerenciar versões.
+Secret versions are deliberately outside Terraform in this repository. Operators or a dedicated delivery workflow are responsible for creating, rotating, disabling, and destroying versions. The runtime identity only receives payload-read permission; it does not receive permission to add or manage versions.
 
-## Fora de escopo
+## Out of scope
 
-Este módulo não cria payloads, versões, roles IAM arbitrárias, grants Secret Manager no projeto, identidades de workload ou políticas específicas de ambiente.
+This module does not create secret payloads, secret versions, arbitrary IAM roles, project-level Secret Manager grants, workload identities, or environment-specific policy.

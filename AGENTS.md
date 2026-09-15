@@ -1,90 +1,90 @@
-# Instruções para agentes
+# Agent Instructions
 
-Este repositório é uma arquitetura de referência Terraform orientada a produção para workloads .NET no Google Cloud. Trate correção da infraestrutura, segurança, reprodutibilidade e documentação como requisitos de primeira classe.
+This repository is a production-oriented Terraform reference architecture for .NET workloads on Google Cloud. Treat infrastructure correctness, security, reproducibility, and documentation as first-class requirements.
 
-## Leia primeiro
+## Read first
 
-Antes de alterar código, leia as fontes de verdade relevantes nesta ordem:
+Before changing code, read the relevant sources of truth in this order:
 
-1. `README.md` para intenção do projeto, capacidades implementadas, status da release e limites documentados.
-2. `docs/architecture.md` para os limites arquiteturais.
-3. Registros aplicáveis em `docs/adr/`.
-4. A issue do GitHub sendo implementada, incluindo Definition of Ready e Definition of Done.
-5. `docs/agent-workflow.md` para o fluxo de execução do repositório.
-6. Skills relevantes do projeto em `.agents/skills/`.
+1. `README.md` for project intent, implemented capabilities, release status, and documented limits.
+2. `docs/architecture.md` for architectural boundaries.
+3. Applicable records under `docs/adr/`.
+4. The GitHub issue being implemented, including its Definition of Ready and Definition of Done.
+5. `docs/agent-workflow.md` for the repository execution workflow.
+6. Relevant project skills under `.agents/skills/`.
 
-Não presuma que uma issue ou prompt anterior foi implementado corretamente. Quando a issue atual depender de trabalho anterior, valide o DoD do pré-requisito antes de fazer alterações.
+Do not assume a previous issue or prompt was implemented correctly. When the current issue depends on earlier work, validate the prerequisite DoD before making changes.
 
-## Roteamento de skills
+## Skill routing
 
-Carregue o menor conjunto de skills relevante para a tarefa:
+Load the smallest relevant skill set for the task:
 
-- Autoria ou revisão de HCL Terraform: `terraform-style-guide`.
-- Módulos filhos reutilizáveis, limites de root modules, interfaces ou refatoração: `terraform-module-engineering`.
-- `.tftest.hcl`, mocks, assertions ou estratégia de testes: `terraform-testing`.
-- IAM do GCP, state remoto, Secret Manager, Workload Identity Federation ou segurança de infraestrutura: `gcp-terraform-security`.
-- Autoria ou revisão de GitHub Actions: `github-actions-hardening`.
+- Terraform HCL authoring or review: `terraform-style-guide`.
+- Reusable child modules, root-module boundaries, interfaces, or refactoring: `terraform-module-engineering`.
+- `.tftest.hcl`, mocks, assertions, or test strategy: `terraform-testing`.
+- GCP IAM, remote state, Secret Manager, Workload Identity Federation, or infrastructure security: `gcp-terraform-security`.
+- GitHub Actions authoring or review: `github-actions-hardening`.
 
-Use múltiplas skills quando uma mudança cruzar diferentes preocupações. Não carregue skills sem relação apenas porque elas existem.
+Use multiple skills when a change crosses concerns. Do not load unrelated skills merely because they exist.
 
-## Limites do repositório
+## Repository boundaries
 
-Preserve estas responsabilidades arquiteturais:
+Preserve these architectural responsibilities:
 
-- `bootstrap/` é responsável pela infraestrutura que precisa existir antes dos roots de workloads, como o state remoto.
-- `modules/` contém módulos filhos reutilizáveis com entradas tipadas explícitas e outputs documentados.
-- `environments/` contém root modules e é responsável por backend, configuração de provider, composição de ambiente, sizing e escolhas de política.
-- `examples/` demonstra consumo isolado e não deve se tornar um segundo root de produção.
-- `docs/adr/` registra decisões com trade-offs arquiteturais relevantes.
+- `bootstrap/` owns infrastructure that must exist before workload roots, such as remote state.
+- `modules/` contains reusable child modules with explicit typed inputs and documented outputs.
+- `environments/` contains root modules and owns backend, provider configuration, environment composition, sizing, and policy choices.
+- `examples/` demonstrates isolated consumption and must not become a second production root.
+- `docs/adr/` records decisions with meaningful architectural trade-offs.
 
-Módulos reutilizáveis não devem configurar backends Terraform nem credenciais de provider. Requisitos de provider são permitidos; a configuração do provider pertence aos root modules.
+Reusable modules must not configure Terraform backends or provider credentials. Provider requirements are allowed; provider configuration belongs to root modules.
 
-## Requisitos de segurança
+## Security requirements
 
-Estes requisitos são inegociáveis, a menos que uma ADR documente explicitamente uma exceção justificada:
+These are non-negotiable unless an ADR explicitly documents a justified exception:
 
-- Nunca faça commit de credenciais, chaves privadas, valores de segredos, state Terraform ou arquivos `.tfvars` sensíveis.
-- Não introduza chaves de service account do Google Cloud de longa duração para CI/CD. Prefira Workload Identity Federation.
-- Aplique privilégio mínimo ao IAM do Google Cloud e às permissões de workflows do GitHub.
-- Prefira recursos aditivos `google_*_iam_member` quando a propriedade da política IAM completa não for explícita; bindings/policies autoritativos exigem justificativa deliberada.
-- Trate o state Terraform como dado sensível.
-- O acesso público deve permanecer desabilitado por padrão.
-- Recursos do Secret Manager podem gerenciar metadados e acesso, mas payloads de segredos da aplicação não devem ser hard-coded no Terraform.
-- GitHub Actions devem usar `permissions:` mínimos e explícitos e referências imutáveis de actions quando prático.
+- Never commit credentials, private keys, secret values, Terraform state, or sensitive `.tfvars` files.
+- Do not introduce long-lived Google Cloud service-account keys for CI/CD. Prefer Workload Identity Federation.
+- Apply least privilege to Google Cloud IAM and GitHub workflow permissions.
+- Prefer additive `google_*_iam_member` resources when ownership of the whole IAM policy is not explicit; authoritative bindings/policies require deliberate justification.
+- Treat Terraform state as sensitive data.
+- Public access must be disabled by default.
+- Secret Manager resources may manage secret metadata and access, but application secret payloads must not be hard-coded in Terraform.
+- GitHub Actions must use explicit minimal `permissions:` and immutable action references where practical.
 
-## Restrição da arquitetura de runtime
+## Runtime architecture constraint
 
-Não modele Pub/Sub como invocação direta de um Cloud Run Job. A entrega push orientada a eventos do Pub/Sub tem como destino um Cloud Run Service que atende requisições. Cloud Run Jobs são workloads batch finitos e devem usar um mecanismo de execução suportado, como Cloud Scheduler ou uma invocação autenticada da API.
+Do not model Pub/Sub as directly invoking a Cloud Run Job. Event-driven Pub/Sub push delivery targets a request-serving Cloud Run service. Cloud Run Jobs are finite batch workloads and must use a supported execution mechanism such as Cloud Scheduler or an authenticated API invocation.
 
-## Convenções Terraform
+## Terraform conventions
 
-- Siga as convenções de formatação e estilo da HashiCorp.
-- Use tipos e descrições explícitos para variáveis.
-- Adicione validação quando um valor inválido puder ser rejeitado localmente.
-- Adicione descrições aos outputs e marque outputs sensíveis adequadamente.
-- Prefira identidade estável de recursos (`for_each`) ao gerenciar coleções nomeadas.
-- Evite `depends_on` desnecessário; expresse dependências por referências.
-- Mantenha módulos coesos em vez de excessivamente genéricos.
-- Mantenha constantes específicas de ambiente fora dos módulos reutilizáveis.
-- Fixe intencionalmente a compatibilidade de Terraform e providers; faça commit dos dependency lock files dos root modules.
+- Follow HashiCorp formatting and style conventions.
+- Use explicit variable types and descriptions.
+- Add validation when an invalid value can be rejected locally.
+- Add descriptions to outputs and mark sensitive outputs appropriately.
+- Prefer stable resource identity (`for_each`) when managing named collections.
+- Avoid unnecessary `depends_on`; express dependencies through references.
+- Keep modules cohesive rather than overly generic.
+- Keep environment-specific constants out of reusable modules.
+- Pin Terraform and provider compatibility intentionally; commit dependency lock files for root modules.
 
-## Fluxo de mudanças
+## Change workflow
 
-Para implementação de issues:
+For issue implementation:
 
-1. Valide o DoR da issue e o DoD dos pré-requisitos.
-2. Inspecione a implementação existente antes de editar.
-3. Faça a menor mudança coesa que satisfaça integralmente o escopo atual.
-4. Atualize a documentação quando comportamento, arquitetura, premissas de segurança ou passos operacionais mudarem.
-5. Adicione ou atualize testes para o comportamento dos módulos quando fizer sentido.
-6. Execute todas as validações práticas antes de considerar o trabalho concluído.
-7. Compare o resultado com cada item do DoD e reporte tudo que não pôde ser validado.
+1. Validate the issue DoR and prerequisite DoD.
+2. Inspect the existing implementation before editing.
+3. Make the smallest coherent change that fully satisfies the current scope.
+4. Update documentation when behavior, architecture, security assumptions, or operator steps change.
+5. Add or update tests for module behavior when meaningful.
+6. Run all practical validation checks before considering the work complete.
+7. Compare the result against every DoD item and report anything that could not be validated.
 
-Nunca execute `terraform apply`, destrua infraestrutura, rotacione credenciais ou altere recursos cloud reais, a menos que o usuário solicite explicitamente essa ação.
+Never run `terraform apply`, destroy infrastructure, rotate credentials, or mutate live cloud resources unless the user explicitly requests that action.
 
-## Baseline de validação
+## Validation baseline
 
-Execute as verificações aplicáveis após as alterações:
+Run the applicable checks after changes:
 
 ```bash
 terraform fmt -check -recursive
@@ -93,14 +93,14 @@ terraform test
 tflint --recursive
 ```
 
-A inicialização pode ser necessária antes da validação. Para workflows apenas de validação, evite backends reais e use `terraform init -backend=false` quando apropriado.
+Initialization may be required before validation. For validation-only workflows, avoid live backends and use `terraform init -backend=false` where appropriate.
 
-Quando houver ferramenta de segurança no repositório, execute-a como parte da mudança relevante. Não afirme que uma verificação passou se a ferramenta estava indisponível ou se credenciais/conectividade impediram a execução.
+When security tooling exists in the repository, run it as part of the relevant change. Do not claim a check passed if the tool was unavailable or credentials/network access prevented execution.
 
 ## Pull requests
 
-- Mantenha uma capacidade arquitetural por issue/PR, a menos que a issue combine explicitamente múltiplas capacidades.
-- Explique o que mudou, por que mudou, implicações de segurança e validações executadas.
-- Vincule a issue implementada e use palavras-chave de fechamento apenas quando seu DoD estiver integralmente satisfeito.
-- Não amplie silenciosamente o escopo para limpezas não relacionadas.
-- Resolva comentários de review com código ou uma resposta tecnicamente justificada; não descarte achados válidos apenas para limpar a revisão.
+- Keep one architectural capability per issue/PR unless the issue explicitly combines them.
+- Explain what changed, why it changed, security implications, and validation performed.
+- Link the implemented issue and use closing keywords only when its DoD is fully satisfied.
+- Do not silently broaden scope to unrelated cleanup.
+- Resolve review comments with code or a technically justified response; do not dismiss valid findings merely to clear a review.

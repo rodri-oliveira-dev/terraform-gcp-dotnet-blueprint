@@ -1,21 +1,21 @@
-# Bootstrap do Workload Identity Federation para GitHub Actions
+# GitHub Actions Workload Identity Federation bootstrap
 
-Este Terraform root provisiona a fundação de confiança no Google Cloud usada pelo GitHub Actions para autenticar sem chaves de service account de longa duração.
+This Terraform root provisions the Google Cloud trust foundation used by GitHub Actions to authenticate without long-lived service-account keys.
 
-A implementação possui duas camadas: este root é responsável pelo limite de confiança no Google Cloud, enquanto os workflows GitHub exercitam a federação e usam a identidade de deployment resultante para operações controladas de plan/apply.
+The implementation has two layers: this root owns the Google Cloud trust boundary, while GitHub workflows exercise federation and use the resulting deployment identity for controlled plan/apply operations.
 
-## O que este root cria
+## What this root creates
 
-- APIs IAM, Security Token Service e IAM Service Account Credentials necessárias à federação;
-- um Workload Identity Pool dedicado ao GitHub Actions;
-- um provider OIDC usando `https://token.actions.githubusercontent.com`;
-- uma service account dedicada de deployment;
-- um binding `roles/iam.workloadIdentityUser` restrito à identidade configurada do repositório;
-- roles opcionais no nível do projeto para a service account de deployment, vazias por padrão.
+- IAM, Security Token Service and IAM Service Account Credentials APIs required by federation;
+- one Workload Identity Pool dedicated to GitHub Actions;
+- one OIDC provider using `https://token.actions.githubusercontent.com`;
+- a dedicated deployment service account;
+- a `roles/iam.workloadIdentityUser` binding restricted to the configured repository identity;
+- optional project-level roles for the deployment service account, empty by default.
 
-## Política de confiança
+## Trust policy
 
-O provider mapeia claims OIDC do GitHub necessários para admissão/auditoria:
+The provider maps GitHub OIDC claims needed for admission/auditability:
 
 - `assertion.sub` -> `google.subject`;
 - `repository_id`;
@@ -23,41 +23,41 @@ O provider mapeia claims OIDC do GitHub necessários para admissão/auditoria:
 - `ref`;
 - `workflow_ref`.
 
-A admissão exige:
+Admission requires:
 
-1. ID imutável do owner GitHub igual a `github_owner_id`;
-2. ID imutável do repositório GitHub igual a `github_repository_id`;
-3. ref do token igual a `github_ref` (padrão `refs/heads/main`).
+1. immutable GitHub owner ID equals `github_owner_id`;
+2. immutable GitHub repository ID equals `github_repository_id`;
+3. token ref equals `github_ref` (default `refs/heads/main`).
 
-Nomes do repositório/owner não são limites de autorização porque podem ser renomeados. Substitua os IDs de exemplo ao reutilizar o blueprint em outro repositório.
+Repository/owner names are not authorization boundaries because they can be renamed. Override the example IDs when reusing the blueprint from another repository.
 
 ## Least privilege
 
-A service account de deployment não recebe role de projeto dos workloads por padrão. Sua relação inicial é somente o binding de impersonation do WIF.
+The deployment service account receives no workload-project role by default. Its initial relationship is the WIF impersonation binding only.
 
-`deployment_project_roles` existe para uso explícito de bootstrap/operação e rejeita as roles legadas amplas `roles/owner` / `roles/editor`. Para entrega real dos ambientes, use o modelo de permissões por capacidade documentado em `docs/terraform-deployment.md`, preferindo grants em nível de recurso quando suportado.
+`deployment_project_roles` exists for explicit bootstrap/operator use and rejects broad legacy `roles/owner` / `roles/editor`. For real environment delivery, use the capability-specific permission model documented in `docs/terraform-deployment.md`, preferring resource-level grants where supported.
 
-O smoke test do WIF consegue validar federação sem permissões no projeto de workloads porque `gcloud auth print-access-token` comprova troca de token/impersonation sem gerenciar recurso de aplicação.
+The WIF smoke test can validate federation without workload-project permissions because `gcloud auth print-access-token` proves token exchange/impersonation without managing an application resource.
 
-## Pré-requisitos
+## Prerequisites
 
-- bucket GCS protegido de state criado por `bootstrap/state`;
-- versão do Terraform em `.terraform-version`;
-- projeto Google Cloud;
-- identidade de operador capaz de gerenciar WIF, service accounts e relações IAM declaradas por este root.
+- protected GCS state bucket from `bootstrap/state`;
+- Terraform version from `.terraform-version`;
+- a Google Cloud project;
+- an operator identity able to manage WIF, service accounts and the IAM relationships declared by this root.
 
-A credencial de operador usada para bootstrap do WIF é separada da identidade de deployment do GitHub Actions que está sendo criada.
+The operator credential bootstrapping WIF is separate from the GitHub Actions deployment identity being created.
 
-## Configurar variáveis
+## Configure variables
 
 ```bash
 cd bootstrap/github-actions-wif
 cp terraform.tfvars.example terraform.tfvars
 ```
 
-Defina `project_id`, valide os IDs imutáveis de owner/repositório GitHub e confira a ref permitida antes do apply.
+Set `project_id`, verify the immutable GitHub owner/repository IDs and verify the allowed ref before apply.
 
-## Inicializar com state remoto
+## Initialize with remote state
 
 ```bash
 terraform init \
@@ -68,26 +68,26 @@ terraform validate
 terraform plan
 ```
 
-Aplique somente após revisar as mudanças de confiança/IAM. Alterações de pool/provider/IAM podem sofrer eventual consistency; a primeira troca de token pode exigir um curto intervalo de propagação.
+Apply only after reviewing the trust/IAM changes. Pool/provider/IAM changes can be eventually consistent, so the first token exchange may require a short propagation interval.
 
-## Configurar repository variables do GitHub
+## Configure GitHub repository variables
 
-Após o apply, capture:
+After apply, capture:
 
 ```bash
 terraform output -raw workload_identity_provider_name
 terraform output -raw deployment_service_account_email
 ```
 
-O repositório usa esses identificadores públicos como variables, não secrets. O conjunto completo consumido pelos workflows de plan/apply está documentado em `docs/terraform-deployment.md` e inclui bucket de state, project IDs dos ambientes, URIs das imagens e valores explícitos de ativação dos workloads.
+The repository uses these public identifiers as variables, not secrets. The complete set consumed by plan/apply workflows is documented in `docs/terraform-deployment.md` and includes the state bucket, environment project IDs, image URIs and explicit workload-activation values.
 
-Nenhuma chave de service account, credencial JSON ou outra credencial GCP de longa duração é armazenada no GitHub.
+No service-account key, JSON credential or other long-lived GCP credential is stored in GitHub.
 
-## Smoke test de autenticação
+## Authentication smoke test
 
-`.github/workflows/gcp-auth-smoke.yml` é manual. Execute-o a partir da `main` depois que o WIF estiver aplicado e as repository variables necessárias estiverem configuradas.
+`.github/workflows/gcp-auth-smoke.yml` is manual. Run it from `main` after WIF is applied and required repository variables are configured.
 
-O workflow concede somente:
+The workflow grants only:
 
 ```yaml
 permissions:
@@ -95,30 +95,30 @@ permissions:
   id-token: write
 ```
 
-Ele autentica via `google-github-actions/auth`, força uma troca por access token e verifica conta/projeto ativos. Pull requests permanecem sem credenciais e tentativas de autenticação por feature/PR ref devem falhar sob a regra de confiança padrão.
+It authenticates through `google-github-actions/auth`, forces an access-token exchange and verifies the active account/project. Pull requests remain credential-free and attempts to authenticate from a feature/PR ref are expected to fail under the default trust rule.
 
-## Entrega Terraform controlada
+## Controlled Terraform delivery
 
-`.github/workflows/terraform-plan.yml` e `.github/workflows/terraform-apply.yml` reutilizam o mesmo limite de confiança WIF a partir da `main`.
+`.github/workflows/terraform-plan.yml` and `.github/workflows/terraform-apply.yml` reuse the same WIF trust boundary from `main`.
 
-- **plan**: inicializa o backend GCS real selecionado e cria resumo seguro para revisão sem enviar o plan completo;
-- **apply**: exige confirmação explícita, bloqueia ações delete/replacement por padrão, usa o GitHub Environment selecionado, refaz o plan após aprovação e verifica o fingerprint antes de aplicar.
+- **plan**: initializes the selected real GCS backend and creates a review-safe summary without uploading the full plan;
+- **apply**: requires explicit confirmation, blocks delete/replacement actions by default, uses the selected GitHub Environment, replans after approval and checks a plan fingerprint before applying.
 
-A identidade de deployment, portanto, precisa de permissões de workload/state além da impersonation WIF para que esses workflows gerenciem infraestrutura. Consulte `docs/terraform-deployment.md`.
+The deployment identity therefore needs workload/state permissions in addition to WIF impersonation before those workflows can manage infrastructure. See `docs/terraform-deployment.md`.
 
-## Arquivos de credenciais gerados
+## Generated credential files
 
-`google-github-actions/auth` pode criar arquivo efêmero `gha-creds-*.json` no workspace do runner. Esse padrão é ignorado pelo repositório. Essas credenciais são derivadas temporárias do GitHub OIDC, não chaves de service account.
+`google-github-actions/auth` may create a short-lived `gha-creds-*.json` file in the runner workspace. That pattern is ignored by the repository. These credentials are ephemeral derivatives of GitHub OIDC, not service-account keys.
 
-## Invariantes de segurança
+## Security invariants
 
-- nenhuma chave de service account é criada;
-- nenhuma credencial GCP de longa duração pertence aos GitHub secrets;
-- admissão é restrita por IDs imutáveis de owner/repositório e ref explícita;
-- `id-token: write` existe somente nos jobs que precisam de OIDC;
-- service account de deployment começa sem roles amplas nos projetos de workloads;
-- `roles/owner` e `roles/editor` são rejeitadas como atalhos de bootstrap;
-- dependência do provider é travada nos lock files dos roots executáveis;
-- GitHub Actions são fixadas por commits imutáveis;
-- arquivos gerados de credenciais são ignorados;
-- validação Terraform de pull request permanece sem credenciais.
+- no service-account key is created;
+- no long-lived GCP credential belongs in GitHub secrets;
+- admission is restricted by immutable owner/repository IDs and explicit ref;
+- `id-token: write` exists only on jobs that need OIDC;
+- the deployment service account starts without broad workload-project roles;
+- `roles/owner` and `roles/editor` are rejected as bootstrap shortcuts;
+- provider dependency is locked in executable-root lock files;
+- GitHub Actions are pinned to immutable commits;
+- generated credential files are ignored;
+- pull-request Terraform validation remains credential-free.

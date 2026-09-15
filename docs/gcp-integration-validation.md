@@ -1,63 +1,63 @@
-# Validação de integração em GCP real
+# Real GCP integration validation
 
-A issue #29 define como o blueprint é validado contra APIs reais do control plane do Google Cloud sem transformar a validação de pull requests em um caminho de deployment.
+Issue #29 defines how the blueprint is validated against real Google Cloud control-plane APIs without turning pull-request validation into a deployment path.
 
-O alvo da validação é **somente desenvolvimento**. Produção fica deliberadamente fora do escopo.
+The validation target is **development only**. Production is deliberately excluded.
 
-## Camadas de validação
+## Validation layers
 
-O repositório usa três camadas distintas:
+The repository uses three distinct validation layers:
 
-| Camada | Credenciais | Acesso ao Google Cloud | Mutação |
+| Layer | Credentials | Google Cloud access | Mutation |
 | --- | --- | --- | --- |
-| CI de pull request | nenhuma | nenhum | nunca |
-| `Terraform plan` manual na `main` | WIF | backend/APIs de provider reais | nunca |
-| `Terraform apply` controlado | WIF | backend/APIs de provider reais | somente deployment explicitamente aprovado |
+| Pull-request CI | none | none | never |
+| Manual `Terraform plan` on `main` | WIF | real backend/provider APIs | never |
+| Controlled `Terraform apply` | WIF | real backend/provider APIs | explicitly approved deployment only |
 
-A issue #29 diz respeito à segunda camada. Ela não autoriza nem exige apply.
+Issue #29 concerns the second layer. It does not authorize or require an apply.
 
-## Definição de validação em GCP real
+## Definition of real-GCP validation
 
-Uma validação de desenvolvimento é considerada real somente quando todos os itens abaixo forem verdadeiros:
+A development validation is considered real only when all of the following are true:
 
-1. o run é disparado a partir de `refs/heads/main`;
-2. GitHub OIDC consegue trocar o token pelo provider Workload Identity Federation configurado;
-3. a service account dedicada de deployment é impersonada sem chave de service account;
-4. `terraform init` inicializa `environments/dev` contra o backend GCS protegido;
-5. Terraform consegue ler o state atual de desenvolvimento e adquirir o lock de backend necessário para o plan;
-6. inicialização do provider conclui com o lock file commitado;
-7. `terraform plan` conclui com refresh habilitado contra o projeto real de desenvolvimento;
-8. Job Summary contém somente endereços/ações de recursos seguros para revisão, sem upload do plan binário nem do JSON completo.
+1. the run is dispatched from `refs/heads/main`;
+2. GitHub OIDC successfully exchanges through the configured Workload Identity Federation provider;
+3. the dedicated deployment service account is impersonated without a service-account key;
+4. `terraform init` initializes `environments/dev` against the protected GCS backend;
+5. Terraform can read the current development state and acquire the backend lock required by planning;
+6. provider initialization succeeds with the committed lock file;
+7. `terraform plan` completes with refresh enabled against the real development project;
+8. the Job Summary contains only review-safe resource addresses/actions and no uploaded binary plan or full JSON plan.
 
-O `.github/workflows/terraform-plan.yml` existente é o caminho canônico de execução WIF para essas verificações. A issue #29 não cria um segundo workflow privilegiado.
+The existing `.github/workflows/terraform-plan.yml` is the canonical WIF execution path for these checks. Issue #29 does not create a second privileged workflow.
 
-## Pré-requisitos
+## Prerequisites
 
-Antes de executar a validação, configure as repository variables documentadas em `docs/terraform-deployment.md`, incluindo:
+Before running the validation, configure the repository variables documented in `docs/terraform-deployment.md`, including:
 
 - `GCP_WORKLOAD_IDENTITY_PROVIDER`;
 - `GCP_SERVICE_ACCOUNT`;
 - `GCP_TERRAFORM_STATE_BUCKET`;
 - `GCP_DEV_PROJECT_ID`;
-- as três variáveis de imagem de container de desenvolvimento;
-- `TF_DEV_ENABLE_WORKLOADS` correspondente ao estado real desejado de ativação.
+- the three development container image variables;
+- `TF_DEV_ENABLE_WORKLOADS` matching the actual desired activation state.
 
-O projeto de desenvolvimento deve estar suficientemente isolado para que um Terraform plan possa inspecionar com segurança seu state e APIs. A identidade de deployment precisa do acesso de leitura exigido pelos refreshes do provider, além de acesso aos objetos do state GCS. Se o plan também deve descrever mudanças futuras, ela precisa das permissões específicas de capacidade documentadas para a identidade de deployment em `docs/terraform-deployment.md`.
+The development project must be isolated enough that a Terraform plan can safely inspect its state and APIs. The deployment identity needs read access required by provider refreshes plus access to the GCS state objects. If the plan is also intended to describe future changes, it needs the capability-specific permissions documented for the deployment identity in `docs/terraform-deployment.md`.
 
-Não conceda `roles/owner` ou `roles/editor` apenas para fazer a validação passar.
+Do not grant `roles/owner` or `roles/editor` merely to make validation pass.
 
-## Helper de preflight do catálogo de APIs
+## API catalog preflight helper
 
-`.github/scripts/gcp-integration-preflight.sh` é um helper read-only para operadores. Ele verifica:
+`.github/scripts/gcp-integration-preflight.sh` is a read-only operator helper. It verifies:
 
-- se é possível obter access token da identidade Google Cloud atual;
-- se o projeto de desenvolvimento configurado pode ser resolvido;
-- se todas as APIs declaradas em `environments/dev/local.required_services` existem no catálogo Service Usage;
-- quais desses serviços estão atualmente habilitados.
+- an access token can be obtained from the current Google Cloud identity;
+- the configured development project can be resolved;
+- every API declared in `environments/dev/local.required_services` exists in the Service Usage catalog;
+- which of those services are currently enabled.
 
-O helper não habilita APIs. Um serviço desabilitado é reportado, e não tratado como falha, porque `environments/dev` é intencionalmente responsável pela habilitação dos serviços por meio de recursos `google_project_service`.
+The helper does not enable APIs. A service being disabled is reported rather than treated as failure because `environments/dev` deliberately owns service enablement through `google_project_service` resources.
 
-Execute o helper apenas em um contexto confiável e autenticado de operador:
+Run the helper only in a trusted authenticated operator context:
 
 ```bash
 export GCP_PROJECT_ID="my-dev-project"
@@ -66,23 +66,23 @@ bash .github/scripts/gcp-integration-preflight.sh
 cat "$GITHUB_STEP_SUMMARY"
 ```
 
-Para GitHub Actions, WIF permanece o mecanismo oficial de autenticação. O helper não é ligado intencionalmente a outro workflow autenticado.
+For GitHub Actions, WIF remains the authoritative authentication mechanism. The helper is intentionally not wired into an additional credentialed workflow.
 
-## Helper de cobertura do plan
+## Plan coverage helper
 
-`.github/scripts/terraform-plan-coverage.sh` verifica um saved plan de desenvolvimento sem ler nem imprimir valores planejados. Ele inspeciona somente os nomes de tipos de recursos Terraform e verifica a representação dos principais contratos arquiteturais:
+`.github/scripts/terraform-plan-coverage.sh` checks a saved development plan without reading or printing planned values. It inspects only Terraform resource type names and verifies representation of the major architecture contracts:
 
-- Cloud Run Service;
+- Cloud Run service;
 - Cloud Run Job;
 - Cloud Scheduler;
-- VPC e subnet;
-- alocação/conexão de Private Service Access;
-- tópico/subscription Pub/Sub;
+- VPC and subnet;
+- Private Service Access allocation and connection;
+- Pub/Sub topic/subscription;
 - Secret Manager;
 - Memorystore for Redis;
-- política de alerta do Cloud Monitoring.
+- Cloud Monitoring alert policy.
 
-Exemplo para reprodução local confiável:
+Example for a trusted local reproduction:
 
 ```bash
 export TF_ROOT="environments/dev"
@@ -91,59 +91,59 @@ bash .github/scripts/terraform-plan-coverage.sh /path/to/dev.tfplan
 cat "$GITHUB_STEP_SUMMARY"
 ```
 
-O workflow de plan do GitHub deliberadamente **não** envia seu plan binário como artifact porque plans podem conter valores sensíveis derivados do state. Portanto, este helper é principalmente útil para reprodução local confiável ou futura integração controlada em runner.
+The GitHub plan workflow deliberately does **not** upload its binary plan as an artifact because plans can contain state-derived sensitive values. Therefore this helper is primarily useful for trusted local reproduction or future controlled runner integration.
 
-## Grafo completo versus fase de fundação
+## Full graph versus foundation phase
 
-`environments/dev` possui ciclo de vida em duas fases.
+`environments/dev` has a two-phase lifecycle.
 
-Quando `TF_DEV_ENABLE_WORKLOADS=false`, um plan real valida o caminho da fundação: APIs, VPC/Private Service Access, Redis, identidades, metadados/IAM do Secret Manager e state remoto. Workloads Cloud Run, entrega Pub/Sub, Scheduler e suas políticas de alerta ficam intencionalmente ausentes.
+When `TF_DEV_ENABLE_WORKLOADS=false`, a real plan validates the foundation path: APIs, VPC/Private Service Access, Redis, identities, Secret Manager metadata/IAM and remote state. Cloud Run workloads, Pub/Sub delivery, Scheduler and their alert policies are intentionally absent.
 
-Após o bootstrap dos segredos e a ativação unidirecional documentada para `TF_DEV_ENABLE_WORKLOADS=true`, o mesmo plan manual também exercita o grafo completo dos workloads.
+After secret bootstrap and the documented one-way activation to `TF_DEV_ENABLE_WORKLOADS=true`, the same manual plan also exercises the complete workload graph.
 
-Não altere temporariamente a repository variable apenas para deixar um checklist de validação verde. A variável deve representar o state real desejado do ambiente de desenvolvimento.
+Do not temporarily change the repository variable merely to make a validation checklist green. The variable must represent the real desired state of the development environment.
 
-## Cobertura por capacidade
+## Coverage by capability
 
-| Capacidade | O que a issue #29 pode validar sem apply | O que continua não comprovado |
+| Capability | What issue #29 can validate without apply | What remains unproven |
 | --- | --- | --- |
-| Cloud Run Services | configuração/plan do provider; refresh de serviços existentes | startup de imagem, health e invocação |
-| Cloud Run Job | configuração/plan do provider; refresh de job existente | execução bem-sucedida do job |
-| Pub/Sub | plan de tópico/subscription/IAM; refresh quando existente | entrega, retry e comportamento de DLQ |
-| Cloud Scheduler | configuração/plan do scheduler; refresh quando existente | trigger autenticado bem-sucedido |
-| Secret Manager | plan de metadados/IAM; refresh quando existente | correção/disponibilidade do payload da aplicação |
-| VPC / Private Service Access | plan de rede, subnet, range e conexão; refresh quando existente | criação bem-sucedida em um novo plano de endereçamento |
-| Memorystore for Redis | plan da instância; refresh quando existente | conectividade AUTH/TLS do cliente e comportamento da aplicação |
-| Cloud Monitoring | plan de políticas de alerta; refresh quando existente | produção de métricas, disparo de incidente e entrega de notificação |
+| Cloud Run services | provider configuration/planning; refresh of existing services | image startup, health and invocation |
+| Cloud Run Job | provider configuration/planning; refresh of an existing job | successful job execution |
+| Pub/Sub | topic/subscription/IAM planning; refresh when present | delivery, retry and DLQ behavior |
+| Cloud Scheduler | scheduler configuration/planning; refresh when present | successful authenticated trigger |
+| Secret Manager | metadata/IAM planning; refresh when present | application payload correctness/availability |
+| VPC / Private Service Access | network, subnet, range and connection planning; refresh when present | successful creation in a new address plan |
+| Memorystore for Redis | instance planning; refresh when present | client AUTH/TLS connectivity and application behavior |
+| Cloud Monitoring | alert-policy planning; refresh when present | metric production, incident firing and notification delivery |
 
-Um plan bem-sucedido é mais forte que mocks offline porque usa provider real, backend real e projeto/state atual. Ainda assim, não equivale a criar e exercitar recursos com sucesso.
+A successful plan is stronger than offline mocks because it uses the real provider, real backend and current project/state. It is still not equivalent to successfully creating and exercising resources.
 
-## Custos e limite de mutação
+## Costs and mutation boundary
 
-Esta validação não cria recursos Google Cloud e não contém etapa de apply/destroy. Ela executa apenas requests de leitura do control plane e operações de state/lock do backend.
+This validation creates no Google Cloud resources and contains no apply/destroy step. It makes control-plane read requests and backend state/lock operations only.
 
-Recursos de desenvolvimento já existentes podem gerar custos normais de serviço; esses custos não são criados pelo run de validação em si.
+Existing development resources may already incur normal service costs; those costs are not created by the validation run itself.
 
-Qualquer smoke test futuro que crie recursos temporários com custo precisa ser uma capacidade separada, explícita e manual, com:
+Any future smoke test that creates temporary billable resources must be a separate, explicit, manual capability with:
 
-- autorização do usuário antes da mutação;
-- escopo/custo máximo esperado documentado;
-- ownership/labels determinísticos;
-- procedimento explícito de cleanup;
-- nenhuma execução automática em produção.
+- user authorization before mutation;
+- a documented maximum scope/cost expectation;
+- deterministic ownership/labels;
+- an explicit cleanup procedure;
+- no automatic production execution.
 
-Nenhum smoke test que crie recursos faz parte da issue #29.
+No such resource-creating smoke test is part of issue #29.
 
-## Evidência necessária para fechar a issue #29
+## Evidence required to close issue #29
 
-Não feche a issue #29 apenas porque esta documentação e o tooling foram mergeados. Registre um run manual bem-sucedido de `Terraform plan` a partir da `main` para `dev` e capture:
+Do not close issue #29 merely because this documentation and tooling have merged. Record a successful manual `Terraform plan` run from `main` for `dev` and capture:
 
 - workflow run ID;
 - commit SHA;
-- confirmação de sucesso da autenticação WIF;
-- confirmação de sucesso da inicialização do backend GCS remoto;
-- conclusão do Terraform plan (`0` sem mudanças ou `2` com mudanças);
-- se `TF_DEV_ENABLE_WORKLOADS` estava `false` (cobertura da fundação) ou `true` (cobertura completa dos workloads);
-- qualquer erro de provider/API descoberto e a correção ou limitação documentada.
+- confirmation that WIF authentication succeeded;
+- confirmation that remote GCS backend initialization succeeded;
+- Terraform plan conclusion (`0` no changes or `2` changes);
+- whether `TF_DEV_ENABLE_WORKLOADS` was `false` (foundation coverage) or `true` (full workload coverage);
+- any provider/API error discovered and the fix or documented limitation.
 
-A issue só pode ser considerada integralmente concluída depois que essa evidência existir. A validação de produção permanece fora do escopo.
+The issue can be considered fully complete only after that evidence exists. Production validation remains outside its scope.

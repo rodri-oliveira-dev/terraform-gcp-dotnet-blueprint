@@ -1,18 +1,18 @@
-# Módulo de identidade de runtime
+# Runtime identity module
 
-Cria uma service account Google Cloud destinada a representar um único limite de runtime de workload, como API Cloud Run, worker orientado a requisições ou Cloud Run Job.
+Creates one Google Cloud service account intended to represent a single workload runtime boundary, such as a Cloud Run API, request-serving worker, or Cloud Run Job.
 
-O módulo deliberadamente não aceita roles IAM arbitrárias. Criar identidade e conceder acesso a recursos são responsabilidades separadas; callers concedem somente as permissões no escopo dos recursos realmente necessários ao workload.
+The module deliberately does not accept arbitrary IAM roles. Creating an identity and granting access to a resource are separate concerns; callers grant only the resource-scoped permissions the workload actually needs.
 
-## Modelo de segurança
+## Security model
 
-- nenhuma chave de service account é criada;
-- a service account fica habilitada por padrão;
-- uma instância do módulo representa uma identidade de workload;
-- nenhuma role no nível do projeto é concedida;
-- outputs são formatados para uso direto por Cloud Run e IAM bindings no escopo de recurso.
+- no service-account keys are created;
+- the service account is enabled by default;
+- one module instance represents one workload identity;
+- no project-level roles are granted;
+- outputs are shaped for direct use by Cloud Run and resource-scoped IAM bindings.
 
-## Exemplo
+## Example
 
 ```hcl
 module "api_identity" {
@@ -34,21 +34,21 @@ module "api" {
 
 ## Inputs
 
-| Nome | Padrão | Descrição |
+| Name | Default | Description |
 | --- | --- | --- |
-| `project_id` | obrigatório | Projeto onde a service account é criada. |
-| `account_id` | obrigatório | ID de service account compatível com RFC1035, 6–30 caracteres. |
-| `display_name` | `null` | Nome legível; por padrão usa `account_id`. |
-| `description` | `null` | Descrição opcional do limite de workload, até 256 caracteres. |
-| `disabled` | `false` | Se a identidade está desabilitada. |
+| `project_id` | required | Project where the service account is created. |
+| `account_id` | required | RFC1035-compatible 6-30 character service-account ID. |
+| `display_name` | `null` | Human-readable name; defaults to `account_id`. |
+| `description` | `null` | Optional workload-boundary description, up to 256 characters. |
+| `disabled` | `false` | Whether the identity is disabled. |
 
 ## Outputs
 
-- `email` — input direto para `service_account` do Cloud Run;
-- `name` — nome completo do recurso service account;
-- `member` — string IAM member `serviceAccount:...`;
-- `unique_id` — identificador estável atribuído pelo Google.
+- `email` — direct input for Cloud Run `service_account`;
+- `name` — fully qualified service-account resource name;
+- `member` — `serviceAccount:...` IAM member string;
+- `unique_id` — stable Google-assigned identifier.
 
-## Fora de escopo
+## Out of scope
 
-Este módulo não cria chaves, grants IAM no projeto, acesso Secret Manager, recursos Cloud Run ou credenciais da aplicação.
+This module does not create keys, project-level IAM grants, Secret Manager access, Cloud Run resources, or application credentials.

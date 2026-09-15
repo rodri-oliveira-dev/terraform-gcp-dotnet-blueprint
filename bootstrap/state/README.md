@@ -1,29 +1,29 @@
-# Bootstrap do state Terraform
+# Terraform state bootstrap
 
-Este Terraform root cria o bucket do Cloud Storage usado pelos demais roots Terraform como backend remoto protegido.
+This Terraform root creates the Cloud Storage bucket used by later Terraform roots as the protected remote backend.
 
-Ele usa intencionalmente state local durante o bootstrap porque o backend remoto não pode existir antes que este root o crie. Preserve o state de bootstrap com segurança até que o bucket exista e seu ciclo de vida/ownership esteja compreendido.
+It intentionally uses local state while bootstrapping because the remote backend cannot exist before this root creates it. Retain the bootstrap state securely until the bucket exists and its lifecycle/ownership is understood.
 
-## Padrões de segurança
+## Security defaults
 
-O bucket é configurado com:
+The bucket is configured with:
 
-- object versioning para histórico de recovery;
+- object versioning for recovery history;
 - uniform bucket-level access;
-- prevenção de acesso público;
+- public access prevention;
 - `force_destroy = false`;
-- proteção de lifecycle `prevent_destroy` do Terraform;
-- nenhuma credencial ou valor de segredo na configuração Terraform versionada.
+- Terraform `prevent_destroy` lifecycle protection;
+- no credentials or secret values in source-controlled Terraform configuration.
 
-O state Terraform contém dados sensíveis de infraestrutura. O acesso deve ser limitado às identidades que precisam ler ou atualizar os objetos de state relevantes.
+Terraform state is sensitive infrastructure data. Access should be limited to identities that need to read or update the relevant state objects.
 
-## Pré-requisitos
+## Prerequisites
 
-- versão do Terraform definida em `.terraform-version` no repositório;
-- projeto Google Cloud com Cloud Storage disponível;
-- credencial de operador com permissão para criar/gerenciar o bucket de state.
+- Terraform version from the repository `.terraform-version`;
+- a Google Cloud project with Cloud Storage available;
+- an operator credential with permission to create/manage the state bucket.
 
-Não crie nem faça commit de chave de service account para este repositório.
+Do not create or commit a service-account key for this repository.
 
 ## Bootstrap
 
@@ -36,23 +36,23 @@ terraform validate
 terraform plan
 ```
 
-Revise o plan antes de aplicá-lo explicitamente:
+Review the plan before explicitly applying it:
 
 ```bash
 terraform apply
 ```
 
-`terraform apply` é uma ação manual do operador. O CI de pull request nunca cria o bucket de state.
+`terraform apply` is a manual operator action. Pull-request CI never creates the state bucket.
 
-Após a criação, capture o nome do bucket:
+After creation, capture the bucket name:
 
 ```bash
 terraform output -raw bucket_name
 ```
 
-## Estrutura do backend
+## Backend layout
 
-Use prefixos distintos para cada root independente. O repositório usa:
+Use distinct prefixes for every independent root. The repository uses:
 
 ```text
 bootstrap/github-actions-wif
@@ -60,18 +60,18 @@ environments/dev
 environments/prod
 ```
 
-Os arquivos `backend.tf` dos ambientes fixam seus próprios prefixos; o nome do bucket é informado na inicialização, por exemplo:
+Environment `backend.tf` files fix their own prefixes; the bucket name is supplied at initialization time, for example:
 
 ```bash
 terraform -chdir=environments/dev init \
   -backend-config="bucket=MY_STATE_BUCKET"
 ```
 
-Os workflows controlados de deployment do GitHub usam a mesma variável de bucket e os prefixos pertencentes a cada ambiente.
+The controlled GitHub deployment workflows use the same bucket variable and environment-owned prefixes.
 
-## Migrar state local existente
+## Migrate existing local state
 
-Se um root já possuir state local, a migração deve ser explícita e revisada pelo operador:
+If a root already has local state, migration must be explicit and operator-reviewed:
 
 ```bash
 terraform init \
@@ -80,27 +80,27 @@ terraform init \
   -backend-config="prefix=environments/dev"
 ```
 
-Verifique o state remoto migrado antes de excluir qualquer backup local. Nunca faça commit de state local, backups, plan files, credenciais ou arquivos `.tfvars` reais.
+Verify the migrated remote state before deleting any local backup. Never commit local state, backups, plan files, credentials or real `.tfvars` files.
 
 ## Recovery
 
-Object versioning mantém gerações anteriores quando um objeto de state é sobrescrito. Recovery é um procedimento de incidente, não uma funcionalidade automatizada de CI:
+Object versioning keeps previous generations when a state object is overwritten. Recovery is an incident procedure, not an automated CI feature:
 
-1. interrompa deployments do root afetado;
-2. preserve o objeto/geração atual de state para investigação;
-3. identifique a geração anterior pretendida e o commit de configuração correspondente;
-4. restaure somente depois de confirmar que essa geração representa o state desejado;
-5. execute um plan antes de qualquer apply e investigue replacements/deletions inesperados.
+1. stop deployments for the affected root;
+2. preserve the current state object/generation for investigation;
+3. identify the intended prior generation and matching configuration commit;
+4. restore only after confirming that generation represents the desired state;
+5. run a plan before any apply and investigate unexpected replacements/deletions.
 
-Não automatize `force-unlock`, remoção/import de state ou restauração de gerações de objetos em workflows genéricos.
+Do not automate `force-unlock`, state removal/import or object-generation restoration in generic workflows.
 
-Como o bucket possui `prevent_destroy` e `force_destroy = false`, uma exclusão intencional exige mudanças explícitas de configuração/lifecycle antes que o Terraform possa removê-lo. Essa proteção é deliberada.
+Because the bucket has `prevent_destroy` and `force_destroy = false`, intentional deletion requires explicit configuration/lifecycle changes before Terraform can remove it. This is deliberate protection.
 
-Consulte `docs/production-readiness.md` e `docs/troubleshooting.md` para a orientação consolidada de recovery.
+See `docs/production-readiness.md` and `docs/troubleshooting.md` for consolidated recovery guidance.
 
-## Validação
+## Validation
 
-O CI do repositório valida este root sem acessar o backend real quando aplicável. Para validação local pelo operador:
+Repository CI validates this root without accessing the real backend where applicable. For local operator validation:
 
 ```bash
 terraform fmt -check
@@ -109,12 +109,12 @@ terraform validate
 terraform plan
 ```
 
-Um CI offline bem-sucedido não comprova que a identidade atual do operador/deployment consegue acessar o bucket real. O workflow manual de plan autenticado via WIF fornece essa camada separada de validação do backend real.
+A successful offline CI run is not evidence that the current operator/deployment identity can access the live bucket. The manual WIF-authenticated plan workflow provides that separate real-backend validation layer.
 
 ## Outputs
 
-| Output | Descrição |
+| Output | Description |
 | --- | --- |
-| `bucket_name` | Nome do bucket consumido na inicialização do backend Terraform. |
-| `bucket_url` | URL `gs://` do bucket de state. |
-| `bucket_location` | Localização configurada do bucket. |
+| `bucket_name` | Bucket name consumed by Terraform backend initialization. |
+| `bucket_url` | `gs://` URL of the state bucket. |
+| `bucket_location` | Configured bucket location. |

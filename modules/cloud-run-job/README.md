@@ -1,40 +1,40 @@
-# Módulo Cloud Run v2 Job
+# Cloud Run v2 job module
 
-Módulo filho Terraform reutilizável para workloads .NET batch finitos que executam até a conclusão em Google Cloud Run Jobs.
+Reusable Terraform child module for finite .NET batch workloads that run to completion on Google Cloud Run Jobs.
 
-O módulo é responsável pela configuração do Cloud Run Job, incluindo Direct VPC egress opcional. Scheduling, IAM de invocação, grants IAM de runtime, recursos Secret Manager, ciclo de vida da VPC e composição de ambiente permanecem fora do módulo para que callers componham essas políticas explicitamente.
+The module owns the Cloud Run Job configuration, including optional Direct VPC egress. Scheduling, invocation IAM, runtime IAM grants, Secret Manager resources, VPC lifecycle, and environment composition remain outside the module so callers can compose those policies explicitly.
 
 ## Job versus service
 
-Cloud Run Job não expõe endpoint orientado a requests. Ele executa uma ou mais tasks e termina. Portanto, deve ser iniciado explicitamente por mecanismo suportado como Cloud Run Admin API, Cloud Scheduler, Workflows ou comando de operador.
+A Cloud Run Job does not expose a request-serving endpoint. It executes one or more tasks and exits. It must therefore be started explicitly through a supported mechanism such as the Cloud Run Admin API, Cloud Scheduler, Workflows, or an operator command.
 
-Não conecte uma push subscription Pub/Sub diretamente a este módulo. Consumo Pub/Sub orientado a eventos pertence a um Cloud Run Service que atende requests.
+Do not connect a Pub/Sub push subscription directly to this module. Event-driven Pub/Sub consumption belongs on a request-serving Cloud Run Service.
 
-## Padrões seguros
+## Safe defaults
 
-- service account de runtime explícita é obrigatória;
-- deletion protection usa `true` por padrão;
-- uma task e parallelism um por padrão;
-- timeout por task usa 600 segundos por padrão;
-- tasks com falha repetem até três vezes por padrão;
-- CPU limitada deliberadamente a 1, 2 ou 4 vCPU inteiros para não depender silenciosamente de configuração exclusiva de Gen2;
-- Direct VPC egress desabilitado por padrão;
-- com Direct VPC, egress usa `PRIVATE_RANGES_ONLY` por padrão;
-- valores de segredos nunca são inputs; somente identificadores e versões Secret Manager são aceitos.
+- explicit runtime service account is required;
+- deletion protection defaults to `true`;
+- one task and parallelism one by default;
+- task timeout defaults to 600 seconds;
+- failed tasks retry up to three times by default;
+- CPU is deliberately limited to 1, 2, or 4 whole vCPU so the module does not silently depend on Gen2-only configurations;
+- Direct VPC egress is disabled by default;
+- when Direct VPC is enabled, egress defaults to `PRIVATE_RANGES_ONLY`;
+- secret values are never module inputs; only Secret Manager identifiers and versions are accepted.
 
-## Configuração de execução
+## Execution configuration
 
-Cloud Run suporta até 10.000 tasks por execução de job. Cada task recebe metadados `CLOUD_RUN_*` gerenciados pelo Cloud Run, como índice, contagem e tentativa de retry. O módulo impede callers de sobrescrever essas variáveis reservadas.
+Cloud Run supports up to 10,000 tasks per job execution. Each task gets Cloud Run-managed `CLOUD_RUN_*` metadata such as task index, task count, and retry attempt. The module prevents callers from overriding those reserved variables.
 
-`parallelism` deve ser inteiro positivo não maior que `task_count`. A plataforma pode impor quota regional de concurrency menor em runtime.
+`parallelism` must be a positive integer no greater than `task_count`. The platform may impose a lower regional concurrency quota at runtime.
 
-`max_retries` aceita de 0 a 10. Valor 0 significa que task com falha não será repetida.
+`max_retries` accepts 0 through 10. A value of 0 means a failed task is not retried.
 
-`task_timeout` usa segundos inteiros e é limitado a 604800 segundos (7 dias). Limites específicos de GPU ficam fora do contrato atual.
+`task_timeout` uses whole seconds and is capped at 604800 seconds (7 days). GPU-specific limits are outside this module's current contract.
 
 ## Direct VPC egress
 
-O input opcional `direct_vpc` renderiza `vpc_access.network_interfaces` no task template. Não cria nem depende de Serverless VPC Access connector.
+The optional `direct_vpc` input renders `vpc_access.network_interfaces` on the Cloud Run task template. It does not create or depend on a Serverless VPC Access connector.
 
 ```hcl
 direct_vpc = {
@@ -45,11 +45,11 @@ direct_vpc = {
 }
 ```
 
-`direct_vpc = null` é o padrão. Modos suportados são `PRIVATE_RANGES_ONLY` e `ALL_TRAFFIC`; o primeiro é padrão para dependências privadas como Memorystore. `ALL_TRAFFIC` é explícito e pode exigir Cloud NAT ou outro desenho de egress externo ao módulo.
+`direct_vpc = null` is the default. The supported egress modes are `PRIVATE_RANGES_ONLY` and `ALL_TRAFFIC`; the former is the default for private dependencies such as Memorystore. `ALL_TRAFFIC` is explicit and may require Cloud NAT or another routed internet-egress design outside this module.
 
-O output `direct_vpc` de `modules/vpc-network` pode ser passado diretamente ao módulo.
+The `modules/vpc-network` output `direct_vpc` can be passed directly to the job module.
 
-## Exemplo
+## Example
 
 ```hcl
 module "batch" {
@@ -81,41 +81,41 @@ module "batch" {
 }
 ```
 
-O output `execution_uri` expõe o endpoint da Cloud Run Admin API usado para iniciar o job:
+The output `execution_uri` exposes the Cloud Run Admin API endpoint used to start the job:
 
 ```text
 https://run.googleapis.com/v2/projects/PROJECT/locations/REGION/jobs/JOB:run
 ```
 
-Um caller pode usar essa URI com Cloud Scheduler e token OAuth de service account dedicada do scheduler.
+A caller may use that URI with Cloud Scheduler and an OAuth token from a dedicated scheduler service account.
 
-## Limites de IAM
+## IAM boundaries
 
-A service account de runtime é a identidade usada pelo processo .NET enquanto as tasks executam. Este módulo não concede permissões a ela.
+The runtime service account is the identity used by the .NET process while tasks run. This module does not grant that identity any permissions.
 
-A identidade que inicia o job é separada. Uma service account de scheduler ou operador deve receber binding aditivo `roles/run.invoker` no Cloud Run Job específico, não permissões Cloud Run amplas no projeto.
+The identity that starts a job is separate. A scheduler or operator service account should receive an additive `roles/run.invoker` binding on the specific Cloud Run Job, not broad project-level Cloud Run permissions.
 
-Acesso Secret Manager também permanece fora do módulo. Conceda à identidade de runtime acesso somente aos segredos realmente consumidos.
+Secret Manager access also remains outside this module. Grant the runtime identity access only to the secrets it actually consumes.
 
 ## Inputs
 
-| Nome | Padrão | Finalidade |
+| Name | Default | Purpose |
 | --- | --- | --- |
-| `project_id` | obrigatório | Projeto Google Cloud. |
-| `name` | obrigatório | Nome do Cloud Run Job. |
-| `location` | obrigatório | Região do job. |
-| `container_image` | obrigatório | Imagem do container batch. |
-| `service_account` | obrigatório | Service account de runtime existente. |
-| `task_count` | `1` | Número de tasks, 1–10000. |
-| `parallelism` | `1` | Máximo de tasks concorrentes, não maior que task count. |
-| `max_retries` | `3` | Retries por task com falha, 0–10. |
-| `task_timeout` | `600s` | Timeout por task até 7 dias. |
-| `resources` | `1` vCPU / `512Mi` | Limites de CPU e memória. |
-| `direct_vpc` | `null` | Rede/subnet Direct VPC opcional, egress e network tags. |
-| `environment_variables` | `{}` | Configuração literal não secreta. |
-| `secret_environment_variables` | `{}` | Somente referências Secret Manager. |
-| `labels` | `{}` | Labels do job. |
-| `deletion_protection` | `true` | Proteção contra exclusão no provider. |
+| `project_id` | required | Google Cloud project. |
+| `name` | required | Cloud Run Job name. |
+| `location` | required | Job region. |
+| `container_image` | required | Batch container image. |
+| `service_account` | required | Existing runtime service account. |
+| `task_count` | `1` | Number of tasks, 1–10000. |
+| `parallelism` | `1` | Maximum concurrent tasks, not greater than task count. |
+| `max_retries` | `3` | Retries per failed task, 0–10. |
+| `task_timeout` | `600s` | Per-task timeout up to 7 days. |
+| `resources` | `1` vCPU / `512Mi` | CPU and memory limits. |
+| `direct_vpc` | `null` | Optional Direct VPC network/subnetwork, egress mode, and network tags. |
+| `environment_variables` | `{}` | Literal non-secret configuration. |
+| `secret_environment_variables` | `{}` | Secret Manager references only. |
+| `labels` | `{}` | Job labels. |
+| `deletion_protection` | `true` | Provider-level deletion protection. |
 
 ## Outputs
 
@@ -126,9 +126,9 @@ Acesso Secret Manager também permanece fora do módulo. Conceda à identidade d
 - `service_account`
 - `execution_uri`
 
-## Testes
+## Testing
 
-Os testes usam provider Google mockado e `command = plan`, sem exigir credenciais ou criar infraestrutura.
+Tests use Terraform's mocked Google provider and `command = plan`, so they require no Google Cloud credentials and create no infrastructure.
 
 ```bash
 terraform init -backend=false
@@ -136,16 +136,16 @@ terraform validate
 terraform test
 ```
 
-Cobrem validação de task/retry/recursos, nomes reservados, comportamento opt-in/default de Direct VPC, egress e mapeamento de network tags.
+Tests cover task/retry/resource validation, reserved environment names, Direct VPC opt-in/default behavior, egress validation, and network tag mapping.
 
-## Fora de escopo
+## Out of scope
 
-- criação de service accounts;
-- grants IAM de runtime;
-- criação do scheduler;
-- IAM de invocação;
-- recursos ou payloads Secret Manager;
-- VPC, subnets, NAT, routers ou Serverless VPC Access connectors;
+- creating service accounts;
+- runtime IAM grants;
+- scheduler creation;
+- invocation IAM;
+- Secret Manager resources or payloads;
+- VPC networks, subnets, NAT, routers, or Serverless VPC Access connectors;
 - GPUs;
-- configurações explícitas exclusivas de CPU Gen2;
-- execução imediata durante `terraform apply`.
+- explicit Gen2-only CPU configurations;
+- immediate execution during `terraform apply`.

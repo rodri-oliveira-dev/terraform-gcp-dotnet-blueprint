@@ -1,255 +1,255 @@
 # Troubleshooting
 
-Este guia cobre modos de falha comuns do blueprint. Use-o junto com a documentação específica de cada componente, e não como substituto para diagnósticos do provider/serviço.
+This guide covers common failure modes for the blueprint. Use it with the component-specific documentation rather than treating it as a substitute for provider/service diagnostics.
 
-## Backend remoto e state
+## Remote backend and state
 
-### `terraform init` não consegue acessar o backend GCS
+### `terraform init` cannot access the GCS backend
 
-Verifique:
+Check:
 
-- `GCP_TERRAFORM_STATE_BUCKET` corresponde ao bucket criado por `bootstrap/state`;
-- a identidade de deployment/operador possui acesso a objetos nesse bucket;
-- o root selecionado usa o prefixo fixo esperado (`environments/dev` ou `environments/prod`);
-- Application Default Credentials/WIF estão realmente ativos no contexto de execução;
-- políticas da organização não bloqueiam o caminho de acesso ao bucket/projeto.
+- `GCP_TERRAFORM_STATE_BUCKET` matches the bucket created by `bootstrap/state`;
+- the deployment/operator identity has object access on that bucket;
+- the selected root uses the expected fixed prefix (`environments/dev` or `environments/prod`);
+- Application Default Credentials/WIF are actually active in the execution context;
+- organization policy does not block the bucket/project access path.
 
-Não contorne autorização de backend copiando state para o repositório ou retornando o root do ambiente para state local.
+Do not work around backend authorization by copying state into the repository or switching the environment root back to local state.
 
-### Problemas de lock ou geração do state
+### State lock or generation problems
 
-Um run interrompido/com falha pode deixar uma operação que exige investigação. Não automatize `force-unlock` como correção genérica.
+A failed/interrupted run can leave an operation requiring investigation. Do not automate `force-unlock` as a generic fix.
 
-1. Confirme que nenhuma operação Terraform ainda está em execução.
-2. Identifique o ambiente/root e a geração atual do state GCS.
-3. Preserve evidências antes de modificar o state.
-4. Use `force-unlock` somente quando o lock estiver comprovadamente obsoleto e o lock ID for compreendido.
+1. Confirm no Terraform operation is still running.
+2. Identify the environment/root and current GCS state generation.
+3. Preserve evidence before modifying state.
+4. Use `force-unlock` only when the lock is proven stale and the lock ID is understood.
 
-Para suspeita de corrupção, siga a sequência de recovery em `docs/production-readiness.md` e `bootstrap/state/README.md`.
+For suspected corruption, follow the recovery sequence in `docs/production-readiness.md` and `bootstrap/state/README.md`.
 
-### Ações inesperadas de create/delete/replacement
+### Unexpected create/delete/replacement actions
 
-Pare antes do apply. Causas comuns incluem:
+Stop before apply. Common causes include:
 
-- projeto ou bucket/prefixo de state incorreto;
-- variáveis do repositório apontando para o ambiente errado;
-- mudanças de provider/versão;
-- recursos alterados manualmente (drift);
-- endereços/recursos Terraform renomeados;
-- mudanças em deletion protection ou ativação unidirecional.
+- wrong project or state bucket/prefix;
+- repository variables pointing to the wrong environment;
+- provider/version changes;
+- manually changed resources (drift);
+- renamed Terraform addresses/resources;
+- deletion-protection or one-way activation changes.
 
-Compare state atual, projeto selecionado, commit Git e configuração antes de continuar.
+Compare the current state, selected project, Git commit and configuration before continuing.
 
 ## Workload Identity Federation
 
-### `google-github-actions/auth` não consegue trocar o token
+### `google-github-actions/auth` cannot exchange the token
 
-Verifique:
+Verify:
 
-- o workflow executa a partir de `refs/heads/main` quando usa a condição de confiança padrão;
-- `GCP_WORKLOAD_IDENTITY_PROVIDER` é o nome completo do recurso do provider;
-- `GCP_SERVICE_ACCOUNT` é a service account de deployment pretendida;
-- `repository_owner_id` e `repository_id` imutáveis do bootstrap correspondem ao repositório atual;
-- o principal ainda possui `roles/iam.workloadIdentityUser` na service account de deployment;
-- IAM Credentials API e STS API estão habilitadas no projeto WIF.
+- the workflow runs from `refs/heads/main` when using the default trust condition;
+- `GCP_WORKLOAD_IDENTITY_PROVIDER` is the full provider resource name;
+- `GCP_SERVICE_ACCOUNT` is the intended deployment service account;
+- immutable `repository_owner_id` and `repository_id` in the bootstrap match the current repository;
+- the principal still has `roles/iam.workloadIdentityUser` on the deployment service account;
+- IAM Credentials and STS APIs are enabled in the WIF project.
 
-Logo após criar/alterar pool/provider, considere eventual consistency antes de concluir que a expressão de confiança está incorreta.
+Immediately after creating/changing the pool/provider, allow for eventual consistency before assuming the trust expression is wrong.
 
-### Autenticação funciona, mas Terraform recebe `403`
+### Authentication succeeds but Terraform gets `403`
 
-WIF comprova identidade, não autorização. Inspecione a permissão exata no erro do provider/API e compare com o mapa de capacidades de deployment em `docs/terraform-deployment.md`.
+WIF proves identity, not authorization. Inspect the exact permission in the provider/API error and compare it with the deployment capability map in `docs/terraform-deployment.md`.
 
-Não resolva isso adicionando `roles/owner` ou `roles/editor`. Adicione a permissão restrita de capacidade/recurso exigida pela operação.
+Do not solve this by adding `roles/owner` or `roles/editor`. Add the narrow capability/resource permission required by the operation.
 
-## Erros de provider e API
+## Provider and API errors
 
-### API está desabilitada
+### API is disabled
 
-Os roots de ambiente declaram os serviços necessários usando `google_project_service`. Um plan pode, portanto, mostrar habilitação de APIs como parte do state desejado.
+The environment roots declare required services using `google_project_service`. A plan can therefore show API enablement as part of the desired state.
 
-Se o Terraform nem consegue inspecionar/gerenciar Service Usage, certifique-se de que a identidade de deployment possui as permissões necessárias de Service Usage e que a política organizacional permite habilitação.
+If Terraform cannot even inspect/manage Service Usage, ensure the deployment identity has the required Service Usage permissions and that organization policy permits enablement.
 
-`gcp-integration-preflight.sh` pode ser usado em um contexto confiável e read-only de operador para comparar o catálogo de APIs necessárias com o projeto dev selecionado.
+`gcp-integration-preflight.sh` can be used in a trusted read-only operator context to compare the required API catalog with the selected dev project.
 
-### Incompatibilidade de schema/versão do provider
+### Provider schema/version mismatch
 
-Verifique:
+Check:
 
-- `.terraform-version` e a versão Terraform usada pelo runner;
-- constraints de `required_providers`;
-- `.terraform.lock.hcl` commitado para roots executáveis;
-- se mudanças de provider pelo Dependabot atualizaram lock files de forma consistente.
+- `.terraform-version` and the Terraform version used by the runner;
+- `required_providers` constraints;
+- the committed `.terraform.lock.hcl` for executable roots;
+- whether Dependabot/provider changes updated lock files consistently.
 
-Execute os mesmos gates offline do CI antes de atribuir a falha ao GCP.
+Run the same offline gates as CI before attributing the failure to GCP.
 
-## VPC e Private Service Access
+## VPC and Private Service Access
 
-### Conexão PSA não pode ser criada
+### PSA connection cannot be created
 
-Verifique:
+Check:
 
-- `servicenetworking.googleapis.com` está disponível/habilitado conforme planejado;
-- o CIDR PSA alocado não sobrepõe a subnet de workloads ou redes roteadas;
-- a identidade de deployment pode gerenciar a rede e a relação Service Networking;
-- o identificador de VPC passado ao Redis é a rede esperada do ambiente.
+- `servicenetworking.googleapis.com` is available/enabled as planned;
+- the allocated PSA CIDR does not overlap the workload subnet or routed networks;
+- the deployment identity can manage the network and Service Networking relationship;
+- the VPC identifier passed to Redis is the expected environment network.
 
-Não use a subnet de workloads como alocação PSA. São preocupações de endereçamento separadas.
+Do not use the workload subnet as the PSA allocation. They are separate address-management concerns.
 
-### Cloud Run não consegue alcançar o Redis
+### Cloud Run cannot reach Redis
 
-Verifique:
+Check:
 
-- Direct VPC egress está configurado no service/job;
-- service/job e subnet estão em regiões/configuração compatíveis;
-- Redis usa a VPC/conexão Private Service Access esperada;
-- configuração da aplicação usa host/porta Redis fornecidos pelo Terraform;
-- configurações de TLS e AUTH correspondem à instância Redis e aos valores do bootstrap externo de segredos.
+- Direct VPC egress is configured on the service/job;
+- service/job and subnet are in compatible regions/configuration;
+- Redis uses the expected VPC/Private Service Access connection;
+- application configuration uses the Terraform-provided Redis host/port;
+- TLS and AUTH settings match the Redis instance and the external secret-bootstrap values.
 
-O blueprint não cria Serverless VPC Access connector, portanto o troubleshooting não deve presumir que um exista.
+The blueprint does not create a Serverless VPC Access connector, so troubleshooting should not assume one exists.
 
 ## Memorystore for Redis
 
-### Criação do Redis falha
+### Redis creation fails
 
-Causas típicas:
+Typical causes:
 
-- conexão/range PSA ainda não pronto ou inválido;
-- combinação de região/tier/versão não suportada;
-- IAM insuficiente;
-- limites de quota/capacidade;
-- restrições de deletion protection/update em uma instância existente.
+- PSA connection/range not ready or invalid;
+- unsupported region/tier/version combination;
+- insufficient IAM;
+- quota/capacity constraints;
+- deletion-protection/update constraints on an existing instance.
 
-Revise o erro exato do provider/API antes de alterar a topologia de rede.
+Review the exact provider/API error before changing network topology.
 
-### Aplicação não consegue autenticar ou validar TLS
+### Application cannot authenticate or validate TLS
 
-Terraform não entrega payloads de Redis AUTH ou server CA à aplicação. Verifique se o processo externo confiável de bootstrap populou as versões esperadas do Secret Manager e se as identidades de runtime possuem `secretAccessor` no segredo correto.
+Terraform does not deliver Redis AUTH or server CA payloads to the application. Verify the trusted external bootstrap process populated the expected Secret Manager versions and that runtime identities have `secretAccessor` on the correct secret.
 
-Nunca imprima payloads de segredo AUTH/CA nos logs de CI ao diagnosticar conectividade.
+Never print AUTH/CA secret payloads in CI logs while diagnosing connectivity.
 
 ## Secret Manager
 
-### Revisão do Cloud Run falha porque uma versão de segredo está ausente
+### Cloud Run revision fails because a secret version is missing
 
-Isso geralmente indica que o ambiente foi ativado antes de concluir a fase externa de bootstrap dos segredos.
+This usually indicates the environment was activated before the external secret-bootstrap phase completed.
 
-1. Inspecione `terraform output secret_bootstrap` para o ambiente.
-2. Verifique se cada segredo referenciado possui a versão atual esperada.
-3. Verifique se a identidade de runtime do workload possui permissão de accessor no segredo.
-4. Execute um novo plan antes do apply.
+1. Inspect `terraform output secret_bootstrap` for the environment.
+2. Verify each referenced secret has the expected current version.
+3. Verify the workload runtime identity has secret-level accessor permission.
+4. Run a new plan before apply.
 
-Não adicione `google_secret_manager_secret_version` com payloads plaintext apenas para contornar o limite de ciclo de vida.
+Do not add `google_secret_manager_secret_version` with plaintext payloads simply to bypass the lifecycle boundary.
 
-## Cloud Run Services
+## Cloud Run services
 
-### Serviço foi implantado, mas não está publicamente acessível
+### Service is deployed but not publicly reachable
 
-Este comportamento é esperado. Os roots de referência não concedem invocação não autenticada e o ingress padrão do serviço é restritivo.
+This is expected. The reference roots do not grant unauthenticated invocation and the default service ingress is restrictive.
 
-Se acesso público for requisito do produto, desenhe uma solução explícita de edge/autenticação (por exemplo, padrão de external load balancer/API gateway), em vez de adicionar silenciosamente `allUsers` ao baseline do blueprint.
+If public access is a product requirement, design an explicit edge/authentication solution (for example an external load balancer/API gateway pattern) rather than silently adding `allUsers` to the blueprint baseline.
 
-### Revisão não fica pronta
+### Revision does not become ready
 
-Investigue:
+Investigate:
 
-- URI/acessibilidade da imagem do container;
-- comportamento de startup e contrato de porta;
-- referências de segredos ausentes/inválidas;
-- permissões da service account de runtime;
-- dependências de VPC/Redis;
-- configuração de CPU/memória e logs da aplicação.
+- container image URI/accessibility;
+- startup behavior and port contract;
+- missing/invalid secret references;
+- runtime service-account permissions;
+- VPC/Redis dependencies;
+- CPU/memory configuration and application logs.
 
-Terraform pode criar o recurso de service, mas não consegue comprovar que a aplicação de negócio está saudável.
+Terraform can create the service resource but cannot prove the business application is healthy.
 
-## Fluxo do worker Pub/Sub
+## Pub/Sub worker flow
 
-### Entrega push recebe 401/403
+### Push delivery receives 401/403
 
-Verifique:
+Check:
 
-- subscription push usa a service account dedicada de push;
-- worker possui binding `roles/run.invoker` no escopo de recurso para essa identidade;
-- OIDC audience corresponde à URI do worker;
-- permissões de criação de token do service agent do Pub/Sub permanecem corretas onde gerenciadas pelo módulo.
+- the push subscription uses the dedicated push service account;
+- the worker has a resource-scoped `roles/run.invoker` binding for that identity;
+- the OIDC audience matches the worker URI;
+- Pub/Sub service-agent token-creation permissions are intact where managed by the module.
 
-Não conceda invocação pública para fazer o push autenticado funcionar.
+Do not grant public invocation to make authenticated push delivery work.
 
-### Mensagens acumulam ou vão para DLQ
+### Messages accumulate or go to DLQ
 
-Revise:
+Review:
 
-- readiness/erros do worker;
-- ack deadline e tempo de processamento;
-- política de retry;
-- comportamento de idempotência;
-- máximo de tentativas de entrega da DLQ;
-- alertas de `oldest_unacked_message_age` e dead-letter.
+- worker readiness/errors;
+- ack deadline and processing time;
+- retry policy;
+- idempotency behavior;
+- DLQ max delivery attempts;
+- `oldest_unacked_message_age` and dead-letter alerts.
 
-Uma DLQ é evidência de entrega esgotada, não substituto para processo de replay/reparo.
+A DLQ is evidence of exhausted delivery, not a substitute for a replay/repair process.
 
-## Cloud Run Job e Scheduler
+## Cloud Run Job and Scheduler
 
-### Scheduler não consegue iniciar o job
+### Scheduler cannot start the job
 
-O target do Scheduler é a URI de execução da Cloud Run Admin API, não um endpoint de requisição do job.
+The Scheduler target is the Cloud Run Admin API execution URI, not a request endpoint on the job.
 
-Verifique:
+Check:
 
-- a identidade dedicada do Scheduler possui `roles/run.invoker` no job;
-- configuração de token OAuth usa essa identidade;
-- nome/localização/URI do job pertencem ao ambiente selecionado;
-- APIs Scheduler e Cloud Run estão habilitadas/autorizadas.
+- the dedicated Scheduler identity has `roles/run.invoker` on the job;
+- OAuth token configuration uses that identity;
+- the job name/location/URI are from the selected environment;
+- Scheduler and Cloud Run APIs are enabled/authorized.
 
-### Job inicia, mas falha
+### Job starts but fails
 
-Inspecione logs da execução e verifique imagem, referências de segredos, IAM de runtime, conectividade Redis, premissas de task/parallelism e idempotência da aplicação. O baseline de monitoring alerta para execuções concluídas com falha, mas não diagnostica lógica da aplicação.
+Inspect execution logs and verify image, secret references, runtime IAM, Redis connectivity, task/parallelism assumptions and application idempotency. The monitoring baseline alerts on failed completed executions but does not diagnose application logic.
 
 ## Cloud Monitoring
 
-### Política de alerta existe, mas nunca dispara
+### Alert policy exists but never fires
 
-Confirme:
+Confirm:
 
-- o recurso alvo realmente emite a métrica selecionada;
-- existe tráfego/execuções durante a janela de avaliação;
-- threshold/duration são adequados;
-- comportamento de dados ausentes é compreendido;
-- nomes de recurso/região no ambiente correspondem aos labels do recurso monitorado.
+- the target resource actually emits the selected metric;
+- traffic/executions exist during the evaluation window;
+- threshold/duration are appropriate;
+- missing-data behavior is understood;
+- resource names/region in the environment match the monitored resource labels.
 
-Alertas de infraestrutura não são SLOs universais.
+Infrastructure alerts are not universal SLOs.
 
-### Alerta dispara, mas nenhuma notificação chega
+### Alert fires but no notification arrives
 
-O blueprint não cria destinos de notificação. Verifique se os nomes de recursos em `observability_notification_channels` existem e se seus destinos/credenciais de integração, gerenciados pela organização, são válidos.
+The blueprint does not create notification destinations. Verify the supplied `observability_notification_channels` resource names exist and that their organization-owned destinations/integration credentials are valid.
 
-## Workflows de deployment do GitHub
+## GitHub deployment workflows
 
-### Plan manual se recusa a executar em feature branch
+### Manual plan refuses to run from a feature branch
 
-Comportamento esperado. Workflows autenticados são restritos à `main` para corresponder ao limite de confiança WIF.
+Expected behavior. Credentialed workflows are restricted to `main` to match the WIF trust boundary.
 
-### Apply para porque o fingerprint do plan mudou
+### Apply stops because the plan fingerprint changed
 
-Ambiente/state/data sources mudaram entre o plan pré-aprovação e o replan do apply. Isso é uma parada de segurança. Inicie um novo run de deployment e revise o novo plan em vez de ignorar o fingerprint.
+The environment/state/data sources changed between pre-approval plan and apply-time replan. This is a safety stop. Start a new deployment run and review the new plan instead of bypassing the fingerprint check.
 
-### Apply bloqueia ações de delete/replacement
+### Apply blocks delete/replacement actions
 
-`allow_destroy` usa `false` por padrão. Um replacement inclui uma ação delete e é intencionalmente bloqueado a menos que quem dispara faça opt-in explícito após revisão. Proteções de exclusão de lifecycle/provider ainda podem bloquear a operação mesmo com `allow_destroy=true`.
+`allow_destroy` defaults to `false`. A replacement includes a delete action and is intentionally blocked unless the dispatcher explicitly opts in after review. Lifecycle/provider deletion protections can still block the operation even with `allow_destroy=true`.
 
-### Ativação de workloads não pode voltar para `false`
+### Workload activation cannot be changed back to `false`
 
-Esperado após uma ativação aplicada. O activation lock impede um caminho de teardown parcial. Para descomissionar intencionalmente um ambiente, desenhe e revise um procedimento dedicado de decommission em vez de usar a flag de bootstrap como switch de destroy.
+Expected after an applied activation. The activation lock prevents a partial teardown path. To intentionally decommission an environment, design and review a dedicated decommission procedure instead of using the bootstrap flag as a destroy switch.
 
-## Quando parar e escalar
+## When to stop and escalate
 
-Pare antes do apply quando:
+Stop before apply when:
 
-- projeto/prefixo de state selecionado for incerto;
-- um plan contiver deletes/replacements inesperados;
-- recovery de state ou force-unlock estiver sendo considerado;
-- IAM precisar ser ampliado além do limite documentado de capacidade;
-- payloads de segredos aparecerem em logs/plans/configuração;
-- mudanças de rede puderem sobrepor CIDRs corporativos existentes;
-- um deployment de produção exigir remoção de proteções.
+- the selected project/state prefix is uncertain;
+- a plan contains unexpected deletes/replacements;
+- state recovery or force-unlock is being considered;
+- IAM requires broadening beyond the documented capability boundary;
+- secret payloads appear in logs/plans/configuration;
+- network changes could overlap existing enterprise CIDRs;
+- a production deployment needs protections removed.
 
-Nesses casos, o blueprint favorece revisão explícita por operador em vez de recovery automatizado.
+The blueprint intentionally favors explicit operator review over automated recovery in these cases.

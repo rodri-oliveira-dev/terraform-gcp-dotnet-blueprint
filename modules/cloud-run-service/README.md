@@ -1,35 +1,35 @@
-# Módulo Cloud Run v2 Service
+# Cloud Run v2 service module
 
-Módulo filho Terraform reutilizável para implantar workloads .NET orientados a requisições no Google Cloud Run v2.
+Reusable Terraform child module for deploying request-serving .NET workloads to Google Cloud Run v2.
 
-O módulo é responsável pela configuração do Cloud Run Service, incluindo Direct VPC egress opcional. Identidades de runtime, grants IAM, recursos Secret Manager, ciclo de vida da VPC, Pub/Sub e composição de ambiente permanecem fora deste módulo para que os roots componham essas capacidades explicitamente.
+The module owns the Cloud Run service configuration, including optional Direct VPC egress. Runtime identities, IAM grants, Secret Manager resources, VPC lifecycle, Pub/Sub, and environment composition remain outside this module so roots can compose those capabilities explicitly.
 
-## Padrões de segurança
+## Security defaults
 
-- Uma service account de runtime é obrigatória; o módulo não usa silenciosamente a service account padrão do projeto.
-- Ingress usa `INGRESS_TRAFFIC_INTERNAL_ONLY` por padrão.
-- Proteção contra exclusão no provider usa `true` por padrão.
-- Scaling usa `0..10` instâncias por padrão para preservar scale-to-zero e limitar exposição de custo da arquitetura de referência.
-- Direct VPC egress é desabilitado por padrão.
-- Quando Direct VPC está habilitado, egress usa `PRIVATE_RANGES_ONLY` por padrão.
-- O módulo não concede `allUsers`, `roles/run.invoker` nem qualquer outra role IAM.
-- Valores de segredos nunca são inputs do módulo. Environment variables baseadas em segredos aceitam apenas identificador e versão do Secret Manager.
+- A runtime service account is required; the module does not silently fall back to the project's default service account.
+- Ingress defaults to `INGRESS_TRAFFIC_INTERNAL_ONLY`.
+- Provider-level deletion protection defaults to `true`.
+- Scaling defaults to `0..10` instances to preserve scale-to-zero while bounding reference-architecture cost exposure.
+- Direct VPC egress is disabled by default.
+- When Direct VPC is enabled, egress defaults to `PRIVATE_RANGES_ONLY`.
+- The module does not grant `allUsers`, `roles/run.invoker`, or any other IAM role.
+- Secret values are never module inputs. Secret-backed environment variables accept only a Secret Manager identifier and version.
 
-Callers são responsáveis por conceder à service account de runtime acesso aos segredos referenciados. Prefira grants `roles/secretmanager.secretAccessor` no escopo dos segredos necessários, em vez de acesso amplo no projeto.
+Callers are responsible for granting the runtime service account access to any referenced secrets. Prefer resource-level `roles/secretmanager.secretAccessor` grants on the required secrets rather than broad project-level access.
 
-## Constraints dos recursos
+## Resource constraints
 
-O módulo valida limites da plataforma Cloud Run antes que um deployment chegue ao provider:
+The module validates Cloud Run platform limits before a deployment reaches the provider:
 
-- CPU é intencionalmente restrita a `1`, `2` ou `4` vCPU. CPU fracionária não é exposta porque traz constraints adicionais de billing/concurrency, e `6`/`8` vCPU não são expostos porque exigem ambiente de execução Gen2, ainda não configurado pelo módulo.
-- Memória deve ficar entre `512Mi` e `16Gi` e ser compatível com a CPU selecionada: até `4Gi` para 1 vCPU, até `8Gi` para 2 vCPU e `2-16Gi` para 4 vCPU.
-- `PORT` e nomes iniciados por `X_GOOGLE_` são rejeitados tanto para variáveis literais quanto para variáveis baseadas no Secret Manager porque são reservados pelo Cloud Run.
+- CPU is intentionally restricted to `1`, `2`, or `4` vCPU. Fractional CPU is not exposed because it carries additional billing/concurrency constraints, and `6`/`8` vCPU are not exposed because they require the second-generation execution environment, which this module does not configure yet.
+- Memory must be between `512Mi` and `16Gi` and compatible with the selected CPU: up to `4Gi` for 1 vCPU, up to `8Gi` for 2 vCPU, and `2-16Gi` for 4 vCPU.
+- `PORT` and names starting with `X_GOOGLE_` are rejected for both literal and Secret Manager-backed environment variables because they are reserved by Cloud Run.
 
-Essas validações são cobertas por testes negativos nativos do Terraform, fazendo configurações inválidas falharem no CI em vez do deployment. Se requisitos futuros precisarem de 6/8 vCPU, o módulo deve primeiro expor ou configurar deliberadamente Gen2 e adicionar validação cruzada correspondente.
+These validations are covered by native Terraform negative tests so invalid configurations fail during CI rather than during deployment. If future requirements need 6/8 vCPU, the module should first expose or deliberately configure the Gen2 execution environment and add matching cross-validation.
 
 ## Direct VPC egress
 
-O input opcional `direct_vpc` renderiza `vpc_access.network_interfaces` do Cloud Run v2; ele não cria Serverless VPC Access connector.
+The optional `direct_vpc` input renders Cloud Run v2 `vpc_access.network_interfaces`; it does not create a Serverless VPC Access connector.
 
 ```hcl
 direct_vpc = {
@@ -40,16 +40,16 @@ direct_vpc = {
 }
 ```
 
-`direct_vpc = null` é o padrão e não renderiza bloco `vpc_access`, preservando compatibilidade para callers que não precisam de rede privada.
+`direct_vpc = null` is the default and renders no `vpc_access` block. This preserves backward compatibility for callers that do not need private networking.
 
-Modos de egress suportados:
+Supported egress modes are:
 
-- `PRIVATE_RANGES_ONLY` — padrão; ranges privados usam a VPC e tráfego público comum mantém o caminho normal do Cloud Run;
-- `ALL_TRAFFIC` — opt-in explícito; callers são responsáveis por Cloud NAT ou outro caminho de internet-egress exigido pelo ambiente.
+- `PRIVATE_RANGES_ONLY` — default; private ranges use the VPC while ordinary public traffic keeps Cloud Run's normal path;
+- `ALL_TRAFFIC` — explicit opt-in; callers are responsible for providing any Cloud NAT or other internet-egress path required by their environment.
 
-O output `direct_vpc` de `modules/vpc-network` pode ser passado diretamente a este input. Recursos de network/subnetwork continuam pertencendo ao módulo/root de rede.
+The `modules/vpc-network` output `direct_vpc` can be passed directly to this input. Network and subnetwork resources themselves remain owned by the network module/root.
 
-## Uso
+## Usage
 
 ```hcl
 module "api" {
@@ -91,44 +91,46 @@ module "api" {
 }
 ```
 
-Usar `INGRESS_TRAFFIC_ALL` altera somente a configuração de ingress de rede. Isso **não** torna o serviço não autenticado; IAM de invocação fica deliberadamente fora deste módulo.
+Using `INGRESS_TRAFFIC_ALL` only changes the network ingress setting. It does **not** make the service unauthenticated; invocation IAM is deliberately outside this module.
 
 ## Inputs
 
-| Nome | Tipo | Padrão | Descrição |
+| Name | Type | Default | Description |
 | --- | --- | --- | --- |
-| `project_id` | `string` | obrigatório | ID do projeto Google Cloud. |
-| `name` | `string` | obrigatório | Nome do Cloud Run Service, validado contra constraints de naming. |
-| `location` | `string` | obrigatório | Região Google Cloud. |
-| `description` | `string` | `null` | Descrição opcional do service, máximo 512 caracteres. |
-| `container_image` | `string` | obrigatório | URI da imagem do container. |
-| `service_account` | `string` | obrigatório | E-mail da service account de runtime existente. |
-| `container_port` | `number` | `8080` | Porta de request do container. |
-| `resources` | `object` | CPU `1`, memória `512Mi`, CPU idle habilitado, startup CPU boost habilitado | Configuração de compute restrita a combinações CPU/memória suportadas. |
-| `scaling` | `object` | min `0`, max `10` | Limites de autoscaling no nível da revision. |
-| `max_instance_request_concurrency` | `number` | `80` | Máximo de requests concorrentes por instância, 1–1000. |
-| `timeout` | `string` | `300s` | Duração máxima da request, limitada a 3600 segundos. |
-| `ingress` | `string` | `INGRESS_TRAFFIC_INTERNAL_ONLY` | Política de ingress suportada do Cloud Run. |
-| `direct_vpc` | `object` | `null` | Rede/subnet Direct VPC opcional, modo de egress e network tags. |
-| `deletion_protection` | `bool` | `true` | Proteção contra exclusão no provider. |
-| `environment_variables` | `map(string)` | `{}` | Environment variables literais não secretas. Nomes reservados são rejeitados. |
-| `secret_environment_variables` | `map(object)` | `{}` | Referências Secret Manager por nome de environment variable não reservado. |
-| `labels` | `map(string)` | `{}` | Labels do service. |
+| `project_id` | `string` | required | Google Cloud project ID. |
+| `name` | `string` | required | Cloud Run service name, validated against Cloud Run naming constraints. |
+| `location` | `string` | required | Google Cloud region. |
+| `description` | `string` | `null` | Optional service description, maximum 512 characters. |
+| `container_image` | `string` | required | Container image URI. |
+| `service_account` | `string` | required | Existing runtime service account email. |
+| `container_port` | `number` | `8080` | Container request port. |
+| `resources` | `object` | CPU `1`, memory `512Mi`, CPU idle enabled, startup CPU boost enabled | Container compute configuration constrained to supported CPU/memory combinations. |
+| `scaling` | `object` | min `0`, max `10` | Revision-level automatic scaling bounds. |
+| `max_instance_request_concurrency` | `number` | `80` | Maximum concurrent requests per instance, from 1 through 1000. |
+| `timeout` | `string` | `300s` | Maximum request duration, capped at 3600 seconds. |
+| `ingress` | `string` | `INGRESS_TRAFFIC_INTERNAL_ONLY` | Supported Cloud Run ingress policy. |
+| `direct_vpc` | `object` | `null` | Optional Direct VPC network/subnetwork, egress mode, and network tags. |
+| `deletion_protection` | `bool` | `true` | Provider-level service deletion protection. |
+| `environment_variables` | `map(string)` | `{}` | Literal, non-secret environment variables. Reserved Cloud Run names are rejected. |
+| `secret_environment_variables` | `map(object)` | `{}` | Secret Manager references keyed by non-reserved environment variable name. |
+| `labels` | `map(string)` | `{}` | Service labels. |
 
-Um nome não pode aparecer simultaneamente em `environment_variables` e `secret_environment_variables`.
+A variable name cannot appear in both `environment_variables` and `secret_environment_variables`.
 
 ## Outputs
 
-- `id` — ID completo do recurso Cloud Run Service;
-- `name` — nome do service;
-- `uri` — serving URI calculada pelo provider;
-- `location` — região do service;
-- `project` — projeto do service;
-- `service_account` — e-mail configurado da service account de runtime.
+- `id` — fully qualified Cloud Run service resource ID;
+- `name` — service name;
+- `uri` — provider-computed serving URI;
+- `location` — service region;
+- `project` — service project;
+- `service_account` — configured runtime service account email.
 
-## Testes
+## Testing
 
-Os testes em `tests/` usam mock provider do Terraform, não exigem credenciais Google Cloud e não criam infraestrutura com custo.
+Tests live under `tests/` and use Terraform's mock provider support so they do not require Google Cloud credentials or create billable infrastructure.
+
+From this module directory:
 
 ```bash
 terraform init -backend=false
@@ -136,17 +138,19 @@ terraform validate
 terraform test
 ```
 
-Os testes cobrem padrões seguros, mapeamento de recursos, outputs, constraints CPU/memória, rejeição de CPU exclusiva de Gen2, nomes reservados de environment variables, comportamento opt-in/default de Direct VPC, validação de egress, network tags e conflitos entre fontes de variáveis.
+The unit tests cover secure defaults, resource mapping, output forwarding, CPU/memory platform constraints, Gen2-only CPU rejection, reserved environment variable names, Direct VPC opt-in/default behavior, egress validation, network tags, and conflicting environment variable sources.
 
-## Fora de escopo
+## Out of scope
 
-Este módulo não cria ou gerencia:
+This module does not create or manage:
 
-- service accounts ou IAM bindings;
-- acesso público de invoker;
-- segredos, versões ou payloads do Secret Manager;
-- VPCs, subnets, NAT, routers ou Serverless VPC Access connectors;
-- subscriptions Pub/Sub;
+- service accounts or IAM bindings;
+- public invoker access;
+- Secret Manager secrets, versions, or secret payloads;
+- VPC networks, subnets, NAT, routers, or Serverless VPC Access connectors;
+- Pub/Sub subscriptions;
 - Cloud Run Jobs;
-- seleção de execution environment Gen2;
-- backends ou configuração de provider específicos de ambiente.
+- Gen2 execution-environment selection;
+- environment-specific backends or provider configuration.
+
+Those responsibilities are composed by subsequent modules and environment roots.

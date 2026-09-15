@@ -1,25 +1,25 @@
-# Exemplo de identidades de runtime e Secret Manager
+# Runtime identities and Secret Manager example
 
-Este root demonstra o limite entre identidade e segredos introduzido pela issue #7 sem implantar workloads Cloud Run.
+This root demonstrates the identity/secret boundary introduced by issue #7 without deploying Cloud Run workloads.
 
-Ele cria:
+It creates:
 
-- identidade de runtime `orders-api`;
-- identidade de runtime `orders-worker`;
-- metadados do segredo `orders-database-url`, legível somente pela identidade da API;
-- metadados do segredo `orders-webhook-key`, legível somente pela identidade do worker.
+- `orders-api` runtime identity;
+- `orders-worker` runtime identity;
+- `orders-database-url` secret metadata, readable only by the API identity;
+- `orders-webhook-key` secret metadata, readable only by the worker identity.
 
-Nenhuma versão nem payload de segredo é criada pelo Terraform.
+No secret version or payload is created by Terraform.
 
-## Pré-requisitos
+## Prerequisites
 
-- APIs IAM e Secret Manager habilitadas no projeto alvo;
-- identidade Terraform de deployment capaz de criar service accounts e segredos Secret Manager;
-- identidade de deployment capaz de atualizar IAM nos segredos específicos que cria.
+- the IAM and Secret Manager APIs are enabled in the target project;
+- the Terraform deployment identity can create service accounts and Secret Manager secrets;
+- the deployment identity can update IAM policy on the specific secrets it creates.
 
-Não execute `terraform apply` por CI ou agente sem autorização explícita. Aplicar este exemplo altera recursos reais do Google Cloud.
+Do not run `terraform apply` from CI or an agent unless explicitly authorized. Applying this example mutates real Google Cloud resources.
 
-## Validar sem criar infraestrutura
+## Validate without creating infrastructure
 
 ```bash
 terraform init -backend=false -input=false -lockfile=readonly
@@ -27,17 +27,17 @@ terraform validate
 terraform plan -input=false -var='project_id=my-project'
 ```
 
-O CI do repositório inicializa/valida o exemplo, mas não autentica no Google Cloud nem aplica recursos.
+The repository CI runs initialization/validation for the example but does not authenticate to Google Cloud or apply resources.
 
-## Fornecimento de payloads dos segredos
+## Supplying secret payloads
 
-Depois que os metadados existirem, operador ou sistema de entrega confiável cria versões fora do Terraform. Por exemplo, um operador pode adicionar versão usando Google Cloud CLI com stdin, sem commitar o valor em source control.
+After the metadata exists, a trusted operator or delivery system creates secret versions outside Terraform. For example, an operator can add a version with the Google Cloud CLI using stdin rather than committing a value to source control.
 
-O processo exato de bootstrap/rotação dos valores é específico da organização e permanece fora deste root de referência.
+The exact secret-value bootstrap/rotation process is organization-specific and intentionally remains outside this reference root.
 
-## Contrato de integração com Cloud Run
+## Cloud Run integration contract
 
-Os outputs refletem os inputs existentes dos módulos de workload:
+The outputs mirror the existing workload module inputs:
 
 ```hcl
 module "api" {
@@ -52,8 +52,8 @@ module "api" {
 }
 ```
 
-O mesmo objeto `{ secret, version }` é aceito por `modules/cloud-run-job`.
+The same `{ secret, version }` object is accepted by `modules/cloud-run-job`.
 
-## Resultado de least privilege
+## Least-privilege result
 
-A identidade da API não consegue ler o segredo do worker e a identidade do worker não consegue ler o segredo da API porque o módulo cria somente membros `roles/secretmanager.secretAccessor` por segredo. Nenhuma role accessor no projeto inteiro é concedida.
+The API identity cannot read the worker secret and the worker identity cannot read the API secret because the module creates only per-secret `roles/secretmanager.secretAccessor` members. No project-level accessor role is granted.

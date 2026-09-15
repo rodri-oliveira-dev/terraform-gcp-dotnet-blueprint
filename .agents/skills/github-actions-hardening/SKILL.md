@@ -1,32 +1,32 @@
 ---
 name: github-actions-hardening
-description: Criar e revisar workflows GitHub Actions com least privilege, autenticação cloud baseada em OIDC, referências imutáveis de actions, triggers seguros e proteção contra injeção por inputs não confiáveis.
+description: Author and review GitHub Actions workflows with least-privilege permissions, OIDC-based cloud authentication, immutable action references, safe trigger choices, and protection against untrusted-input injection.
 ---
 
-# Hardening de GitHub Actions
+# GitHub Actions Hardening
 
-Use esta skill ao criar ou modificar `.github/workflows/*.yml` ou `.yaml`.
+Use this skill whenever creating or modifying `.github/workflows/*.yml` or `.yaml`.
 
-## Limites de confiança dos triggers
+## Trigger trust boundaries
 
-Entenda quem pode causar a execução do workflow e quais privilégios ele recebe.
+Understand who can cause a workflow to run and what privileges the workflow receives.
 
-- Trate `pull_request_target`, `workflow_run`, `issue_comment` e triggers semelhantes de contexto privilegiado/base com escrutínio extra.
-- Nunca combine trigger privilegiado com checkout/execução de código não confiável de fork.
-- Prefira `pull_request` comum para validar código contribuído.
+- Treat `pull_request_target`, `workflow_run`, `issue_comment`, and similar privileged/base-context triggers with extra scrutiny.
+- Never combine a privileged trigger with checkout/execution of untrusted fork code.
+- Prefer ordinary `pull_request` for validation of contributed code.
 
-## Permissões do workflow
+## Workflow permissions
 
-Defina `permissions:` explícitas no nível do workflow ou job. Comece pelo mínimo e adicione somente o necessário.
+Set explicit top-level or job-level `permissions:`. Start from the minimum and add only what a job needs.
 
-Jobs típicos de validação Terraform precisam apenas de:
+Typical Terraform validation jobs need only:
 
 ```yaml
 permissions:
   contents: read
 ```
 
-Um job que autentica no Google Cloud com GitHub OIDC também exige:
+A job authenticating to Google Cloud with GitHub OIDC additionally requires:
 
 ```yaml
 permissions:
@@ -34,48 +34,48 @@ permissions:
   id-token: write
 ```
 
-Não conceda `write-all` ou escopos amplos de escrita por conveniência.
+Do not grant `write-all` or broad write scopes for convenience.
 
-## OIDC e Google Cloud
+## OIDC and Google Cloud
 
-Use Workload Identity Federation em vez de chaves de service account de longa duração. Mantenha autenticação no menor escopo de job possível e não exponha credenciais a código não confiável.
+Use Workload Identity Federation rather than long-lived service-account keys. Keep authentication in the smallest job scope possible and do not expose credentials to untrusted code.
 
-## Input não confiável
+## Untrusted input
 
-Não interpole contexto GitHub controlado por atacante diretamente em scripts shell.
+Do not interpolate attacker-controlled GitHub context directly into shell scripts.
 
-Evite incorporar títulos de PR, nomes de branch, bodies de issue, comentários ou mensagens de commit diretamente em comandos `run:`. Quando esses dados forem necessários, passe-os por environment variable e faça quoting apropriado ao shell.
+Avoid patterns such as embedding PR titles, branch names, issue bodies, comments, or commit messages directly inside `run:` commands. When such data is required, pass it through an environment variable and quote it appropriately for the shell.
 
-## Supply chain das actions
+## Action supply chain
 
-- Evite `@main`, `@master` ou outras referências mutáveis de branch.
-- Prefira pins por SHA completo de commit para actions de terceiros e mantenha comentário de versão para manutenção.
-- Trate actions first-party como risco menor, mas pins imutáveis continuam preferíveis em workflows hardened.
-- Configure Dependabot/Renovate para atualizações de GitHub Actions quando dependências do workflow forem relevantes.
+- Avoid `@main`, `@master`, or other mutable branch references.
+- Prefer full commit SHA pins for third-party actions and retain a version comment for maintainability.
+- Treat first-party actions as lower risk, but pinning to immutable revisions is still preferred for hardened workflows.
+- Configure Dependabot/Renovate for GitHub Actions updates when workflow dependencies become substantial.
 
-## Segurança do checkout
+## Checkout safety
 
-Não deixe credenciais do repositório disponíveis a etapas não confiáveis sem necessidade. Use `persist-credentials: false` quando o código posterior não precisar de Git credentials, especialmente ao executar código contribuído.
+Do not leave repository credentials available to untrusted steps unnecessarily. Set `persist-credentials: false` when subsequent code does not need Git credentials, especially when executing contributed code.
 
-## CI específico de Terraform
+## Terraform-specific CI
 
-Separe validação sem privilégios de responsabilidades privilegiadas de deployment.
+Separate unprivileged validation from privileged deployment concerns.
 
-Validação de PR deve executar formatting, static validation, linting, unit tests nativos e verificações estáticas de segurança sem credenciais cloud quando prático.
+PR validation should be able to run formatting, static validation, linting, native unit tests, and static security checks without cloud credentials whenever practical.
 
-Workflows autenticados de `plan` ou deployment devem usar triggers/environments controlados, OIDC, least privilege e limites explícitos de aprovação quando apropriado.
+Credentialed `plan` or deployment workflows should use controlled triggers/environments, OIDC, least privilege, and explicit approval boundaries where appropriate.
 
-## Checklist de revisão
+## Review checklist
 
-- Triggers são adequados ao código executado?
-- Input não confiável pode virar código shell/script?
-- `permissions:` é explícito e mínimo?
-- Credenciais cloud são keyless e restritas ao job pretendido?
-- Actions estão fixadas de forma imutável quando prático?
-- Segredos ficam fora de código não confiável?
-- Deployment está separado da validação normal de PR?
+- Are triggers appropriate for the code being executed?
+- Could untrusted input become shell or script code?
+- Is `permissions:` explicit and minimal?
+- Are cloud credentials keyless and scoped to the intended job?
+- Are actions pinned immutably where practical?
+- Are secrets withheld from untrusted code?
+- Is deployment separated from ordinary PR validation?
 
-## Referências
+## References
 
 - https://github.com/github/awesome-copilot/tree/main/skills/github-actions-hardening
 - https://docs.github.com/en/actions/security-for-github-actions/security-guides/security-hardening-for-github-actions

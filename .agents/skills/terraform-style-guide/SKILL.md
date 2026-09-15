@@ -1,64 +1,64 @@
 ---
 name: terraform-style-guide
-description: Aplicar convenções consistentes de estilo HCL, nomenclatura, tipagem, validação, dependências e versionamento ao escrever ou revisar Terraform neste repositório.
+description: Apply consistent Terraform HCL style, naming, typing, validation, dependency, and versioning conventions when writing or reviewing Terraform in this repository.
 ---
 
-# Guia de estilo Terraform
+# Terraform Style Guide
 
-Use esta skill para qualquer autoria ou revisão de HCL Terraform.
+Use this skill for any Terraform HCL authoring or review.
 
-## Regras principais
+## Core rules
 
-- Execute `terraform fmt` em vez de formatar manualmente ao redor dele.
-- Use lowercase snake_case para identificadores Terraform.
-- Dê a toda variável `type` e `description` explícitos.
-- Adicione validação quando input inválido puder ser rejeitado localmente e de forma clara.
-- Dê a todo output uma `description`; marque outputs sensíveis com `sensitive = true`.
-- Prefira referências a `depends_on` explícito quando dependência puder ser expressa pelo data flow.
-- Prefira `for_each` para coleções com chaves semânticas estáveis; use `count` principalmente para criação condicional simples ou coleções realmente indexadas.
-- Evite `any` salvo quando a interface genuinamente não puder ser representada com tipo útil.
-- Evite maps excessivamente genéricos de configuração sem tipo.
-- Mantenha locals com propósito; não esconda comportamento importante em cadeias de indireção.
+- Run `terraform fmt` rather than hand-formatting around it.
+- Use lowercase snake_case for Terraform identifiers.
+- Give every variable an explicit `type` and `description`.
+- Add variable validation when invalid input can be rejected locally and clearly.
+- Give every output a `description`; mark sensitive outputs with `sensitive = true`.
+- Prefer references over explicit `depends_on` when the dependency can be expressed through data flow.
+- Prefer `for_each` for collections with stable semantic keys; use `count` mainly for simple conditional creation or truly index-based collections.
+- Avoid `any` unless the interface genuinely cannot be represented with a useful type.
+- Avoid overly generic maps of untyped configuration.
+- Keep locals purposeful; do not hide important behavior behind chains of indirection.
 
-## Organização dos arquivos
+## File organization
 
-Use arquivos claros por responsabilidade quando útil:
+Use clear responsibility-based files where useful:
 
-- `versions.tf`: constraints Terraform e required providers.
-- `providers.tf`: configuração de provider somente em root modules.
-- `backend.tf`: configuração de backend somente em root modules.
-- `variables.tf`: contrato público de inputs.
-- `main.tf`: recursos/data sources/modules principais.
-- `locals.tf`: valores locais derivados quando melhoram legibilidade.
-- `outputs.tf`: contrato público de outputs.
+- `versions.tf`: Terraform and required-provider constraints.
+- `providers.tf`: provider configuration in root modules only.
+- `backend.tf`: backend configuration in root modules only.
+- `variables.tf`: public input contract.
+- `main.tf`: primary resources/data sources/modules.
+- `locals.tf`: derived local values when they improve readability.
+- `outputs.tf`: public output contract.
 
-Módulos pequenos não precisam de arquivos vazios somente para satisfazer template.
+Small modules do not need empty files solely to satisfy a template.
 
-## Versões e dependências
+## Versions and dependencies
 
-- Respeite a versão Terraform CLI fixada no repositório.
-- Declare requisitos de provider explicitamente.
-- Módulos filhos reutilizáveis declaram `required_providers`, mas não configuram credenciais ou backends.
-- Root modules devem commitar `.terraform.lock.hcl` após inicializações/upgrades intencionais de providers.
-- Não afrouxe constraints de versão apenas para fazer initialization funcionar.
+- Respect the repository-pinned Terraform CLI version.
+- Declare provider requirements explicitly.
+- Reusable child modules declare `required_providers` but do not configure provider credentials or backends.
+- Root modules should commit `.terraform.lock.hcl` after intentional provider initialization/upgrades.
+- Do not loosen version constraints merely to make initialization succeed.
 
-## Segredos e state
+## Secrets and state
 
-Nunca hard-code credenciais ou payloads de segredos da aplicação em `.tf`, `.tfvars`, exemplos, testes ou documentação. Trate state como sensível mesmo quando output estiver marcado sensitive.
+Never hard-code credentials or application secret payloads in `.tf`, `.tfvars`, examples, tests, or documentation. Treat state as sensitive even when an output is marked sensitive.
 
-## Checklist de revisão
+## Review checklist
 
-Antes de concluir mudanças Terraform, verifique:
+Before completing Terraform changes, verify:
 
-- `terraform fmt -check -recursive` passa;
-- nomes são descritivos e estáveis;
-- tipos e validações de variáveis correspondem aos requisitos reais;
-- outputs expõem apenas contratos úteis de integração;
-- nenhum valor específico de ambiente vazou para módulo reutilizável;
-- nenhuma dependência explícita evitável foi introduzida;
-- nenhuma credencial, state ou valor de segredo foi commitado.
+- `terraform fmt -check -recursive` passes;
+- names are descriptive and stable;
+- variable types and validations match actual requirements;
+- outputs expose only useful integration contracts;
+- no environment-specific value leaked into a reusable module;
+- no avoidable explicit dependency was introduced;
+- no credential, state, or secret value is committed.
 
-## Referências
+## References
 
 - https://developer.hashicorp.com/terraform/language/style
 - https://github.com/hashicorp/agent-skills/tree/main/plugins/terraform/skills/terraform-style-guide

@@ -1,32 +1,32 @@
-# Identidades de runtime e Secret Manager
+# Runtime identities and Secret Manager
 
-## Propósito
+## Purpose
 
-Workloads neste repositório usam service accounts Google Cloud explícitas, em vez de identidades padrão do projeto. O acesso ao Secret Manager é concedido a essas identidades somente nos segredos individuais necessários.
+Workloads in this repository use explicit Google Cloud service accounts rather than project-default identities. Secret Manager access is granted to those identities only on the individual secrets they require.
 
-O desenho separa três preocupações:
+The design separates three concerns:
 
-1. criação da identidade de workload;
-2. metadados/política de acesso do segredo;
-3. ciclo de vida de payload/versões do segredo.
+1. workload identity creation;
+2. secret metadata/access policy;
+3. secret payload/version lifecycle.
 
-Terraform é responsável pelas duas primeiras. Payloads de segredos da aplicação permanecem fora do Terraform.
+Terraform owns the first two. Application secret payloads remain outside Terraform.
 
-## Limite da identidade de runtime
+## Runtime identity boundary
 
-`modules/runtime-identity` cria uma service account para um limite de workload. Instâncias típicas incluem identidade de runtime da API, worker assíncrono e batch job.
+`modules/runtime-identity` creates one service account for one workload boundary. Typical module instances include an API runtime identity, an asynchronous worker runtime identity, and a batch-job runtime identity.
 
-O módulo não aceita roles arbitrárias de projeto e nunca cria chaves de service account. Um root compõe essa identidade com Cloud Run passando `module.<identity>.email` para o input `service_account` do módulo de workload.
+The module does not accept arbitrary project roles and never creates service-account keys. A root composes that identity with Cloud Run by passing `module.<identity>.email` to the workload module's `service_account` input.
 
-Isso mantém credenciais de runtime separadas de credenciais de deployment, identidades Pub/Sub push, identidades de trigger Cloud Scheduler e service agents gerenciados pelo Google.
+This keeps runtime credentials separate from deployment credentials, Pub/Sub push identities, Cloud Scheduler trigger identities, and Google-managed service agents.
 
-## Limite de metadados dos segredos
+## Secret metadata boundary
 
-`modules/secret-manager` cria um recurso de metadados `google_secret_manager_secret`. Deletion protection é habilitada por padrão, replication automática é usada a menos que locations sejam fornecidas explicitamente e nenhum principal recebe acesso ao payload por padrão.
+`modules/secret-manager` creates one `google_secret_manager_secret` metadata resource. Deletion protection is enabled by default, automatic replication is used unless locations are explicitly supplied, and no principal receives payload access by default.
 
-Quando `accessor_service_accounts` é configurado, o módulo adiciona um `google_secret_manager_secret_iam_member` por identidade de workload com exatamente `roles/secretmanager.secretAccessor` nesse segredo.
+When `accessor_service_accounts` is configured, the module adds one `google_secret_manager_secret_iam_member` per workload identity with exactly `roles/secretmanager.secretAccessor` on that secret.
 
-O input é um map com chaves estáveis escolhidas pelo caller e e-mails de service account como valores:
+The input is a map with caller-chosen stable keys and service account emails as values:
 
 ```hcl
 accessor_service_accounts = {
@@ -34,27 +34,27 @@ accessor_service_accounts = {
 }
 ```
 
-A chave estável (`api_runtime`) determina o endereço da instância do recurso Terraform. O e-mail permanece valor e pode estar unknown no plan inicial enquanto a service account é criada no mesmo grafo. E-mails computados de service account não devem ser usados como chaves de `for_each`.
+The stable key (`api_runtime`) determines the Terraform resource instance address. The email remains a value and may therefore be unknown during the initial plan while the service account is being created in the same graph. Computed service-account emails must not be used as `for_each` keys.
 
-Nenhuma role de Secret Manager accessor no projeto inteiro é criada. Isso segue least privilege: workload que precisa de um segredo deve receber acesso a esse segredo, não a todos os segredos do projeto.
+No project-level Secret Manager accessor role is created. This follows Google Cloud least-privilege guidance: a workload that needs one secret should receive access to that secret rather than every secret in the project.
 
-## Ownership de payload e versões
+## Payload and version ownership
 
-O repositório intencionalmente não cria recursos `google_secret_manager_secret_version` para credenciais da aplicação e não expõe variável que aceite secret data.
+This repository intentionally does not create `google_secret_manager_secret_version` resources for application credentials and does not expose a variable that accepts secret data.
 
-Um operador ou processo de entrega confiável é responsável por:
+A trusted operator or delivery process is responsible for:
 
-- adicionar a versão inicial do segredo;
-- rotacionar valores;
-- atribuir aliases quando apropriado;
-- desabilitar ou destruir versões comprometidas/obsoletas;
-- auditar acesso aos payloads.
+- adding the initial secret version;
+- rotating values;
+- assigning aliases when appropriate;
+- disabling or destroying compromised/obsolete versions;
+- auditing payload access.
 
-Manter payloads fora do Terraform evita credenciais em configuração versionada e evita colocar deliberadamente segredos da aplicação no state Terraform.
+Keeping payloads outside Terraform prevents source-controlled configuration from containing credentials and avoids deliberately placing application secret values into Terraform state.
 
-## Integração com Cloud Run
+## Cloud Run integration
 
-Os dois módulos Cloud Run consomem o mesmo formato de referência:
+Both existing Cloud Run modules consume the same reference shape:
 
 ```hcl
 secret_environment_variables = {
@@ -65,7 +65,7 @@ secret_environment_variables = {
 }
 ```
 
-O módulo Secret Manager expõe exatamente esse formato como `secret_reference`, permitindo composição sem transformação:
+The Secret Manager module exposes that exact shape as `secret_reference`, so roots can compose the modules without transforming data:
 
 ```hcl
 service_account = module.api_identity.email
@@ -75,14 +75,14 @@ secret_environment_variables = {
 }
 ```
 
-A service account ainda precisa do binding de accessor no segredo; referenciar um segredo não concede acesso por si só.
+The service account still requires the per-secret accessor binding; referencing a secret does not itself grant access.
 
-## Notas operacionais
+## Operational notes
 
-- chaves estáveis do map de accessors devem representar limites de workload e não podem derivar de atributos calculados;
-- `latest` é conveniente na arquitetura de referência, mas organizações podem preferir versão numérica ou alias gerenciado para maior controle de rollout;
-- alterar metadados do segredo não cria nem rotaciona payload;
-- excluir metadados protegidos exige mudança explícita em `deletion_protection` antes que Terraform possa removê-los;
-- recursos IAM são membros aditivos, não substituições autoritativas da política inteira.
+- stable accessor map keys should represent workload boundaries and must not be derived from computed attributes;
+- `latest` is convenient for the reference architecture but organizations may prefer a numeric version or managed alias for tighter rollout control;
+- changing secret metadata does not create or rotate secret payloads;
+- deleting protected secret metadata requires an explicit change to `deletion_protection` before Terraform can remove it;
+- IAM resources are additive members rather than authoritative whole-policy replacements.
 
-Consulte `examples/runtime-secrets` para composição com duas identidades de workload que não conseguem ler os segredos uma da outra.
+See `examples/runtime-secrets` for a composition with two workload identities that cannot read each other's secrets.

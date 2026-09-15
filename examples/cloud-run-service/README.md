@@ -1,10 +1,10 @@
-# Exemplo de Cloud Run Service
+# Cloud Run service example
 
-Este root demonstra o consumo isolado de `modules/cloud-run-service` sem introduzir composição específica de ambiente.
+This root demonstrates isolated consumption of `modules/cloud-run-service` without introducing environment-specific composition.
 
-O exemplo exige intencionalmente uma service account de runtime existente e não cria IAM bindings. Ele também preserva os padrões seguros do módulo: ingress somente interno, proteção contra exclusão habilitada, scale-to-zero e máximo de dez instâncias.
+The example intentionally requires an existing runtime service account and does not create IAM bindings. It also keeps the module's secure defaults: internal-only ingress, deletion protection enabled, scale-to-zero, and a maximum of ten instances.
 
-## Validar localmente
+## Validate locally
 
 ```bash
 terraform init -backend=false -lockfile=readonly
@@ -13,7 +13,7 @@ terraform validate
 
 ## Plan
 
-Forneça o projeto alvo e uma service account de runtime existente:
+Provide the target project and an existing runtime service account:
 
 ```bash
 terraform plan \
@@ -21,6 +21,6 @@ terraform plan \
   -var="service_account=cloud-run-api@my-project.iam.gserviceaccount.com"
 ```
 
-A imagem padrão é o container público hello do Google Cloud Run, evitando dependência de um repositório Artifact Registry pertencente ao consumidor.
+The default image is Google's public Cloud Run hello container so the example does not depend on an Artifact Registry repository owned by the consumer.
 
-Este exemplo existe para facilitar descoberta e validação do módulo. A composição de ambientes de produção pertence a `environments/`.
+This example is for module discoverability and validation. Production environment composition belongs under `environments/`.

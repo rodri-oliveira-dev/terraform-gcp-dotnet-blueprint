@@ -1,11 +1,11 @@
-# Exemplo de Cloud Run Job agendado
+# Scheduled Cloud Run Job example
 
-Este root compõe `modules/cloud-run-job` com Cloud Scheduler para demonstrar caminho suportado de execução batch finita:
+This root composes `modules/cloud-run-job` with Cloud Scheduler to demonstrate a supported finite-batch execution path:
 
 ```text
 Cloud Scheduler
       |
-      | access token OAuth 2.0
+      | OAuth 2.0 access token
       v
 Cloud Run Admin API
       |
@@ -14,48 +14,48 @@ Cloud Run Admin API
 Cloud Run Job
       |
       v
-Container batch .NET executa até a conclusão
+.NET batch container runs to completion
 ```
 
-Ele intencionalmente **não** usa Pub/Sub para iniciar o job. Push Pub/Sub exige endpoint orientado a requisições e é demonstrado separadamente por `examples/pubsub-worker`.
+It intentionally does **not** use Pub/Sub to launch the job. Pub/Sub push delivery requires a request-serving endpoint and is demonstrated separately by `examples/pubsub-worker`.
 
-## Separação de identidades
+## Identity separation
 
-O exemplo espera duas service accounts existentes:
+The example expects two pre-existing service accounts:
 
-- `runtime_service_account` — anexada às tasks do Cloud Run Job e usada pelo processo .NET batch ao acessar APIs Google Cloud;
-- `scheduler_service_account` — usada somente pelo Cloud Scheduler para autenticar request à Cloud Run Admin API.
+- `runtime_service_account` — attached to Cloud Run Job tasks and used by the .NET batch process when accessing Google Cloud APIs;
+- `scheduler_service_account` — used only by Cloud Scheduler to authenticate the Cloud Run Admin API request.
 
-O exemplo concede à identidade do scheduler `roles/run.invoker` no Cloud Run Job específico por recurso aditivo `google_cloud_run_v2_job_iam_member`. Não concede permissões Cloud Run no nível do projeto.
+The example grants the scheduler identity `roles/run.invoker` on the specific Cloud Run Job through the additive `google_cloud_run_v2_job_iam_member` resource. It does not grant Cloud Run permissions at project scope.
 
-As identidades devem ser diferentes para manter permissões de runtime e trigger com escopos independentes.
+The two identities must be different so runtime permissions and trigger permissions remain independently scoped.
 
-## Escolha de autenticação
+## Authentication choice
 
-O target do Scheduler é endpoint de Google API (`run.googleapis.com`), portanto o exemplo usa access token OAuth em vez de token OIDC.
+The Scheduler target is a Google API endpoint (`run.googleapis.com`), so the example uses an OAuth access token rather than an OIDC token.
 
-A URI alvo é produzida pelo módulo job:
+The target URI is produced by the job module:
 
 ```text
 https://run.googleapis.com/v2/projects/PROJECT/locations/REGION/jobs/JOB:run
 ```
 
-A request HTTP é `POST` com objeto JSON vazio. Cloud Scheduler autentica como `scheduler_service_account` usando o escopo OAuth `cloud-platform`.
+The HTTP request is `POST` with an empty JSON object. Cloud Scheduler authenticates as `scheduler_service_account` using the `cloud-platform` OAuth scope.
 
-## Pré-requisitos
+## Prerequisites
 
-Antes de aplicar:
+Before applying the example:
 
-1. habilite APIs Cloud Run e Cloud Scheduler;
-2. crie service accounts de runtime e scheduler;
-3. conceda à runtime somente permissões necessárias ao código batch;
-4. garanta que o deployer Terraform possa anexar a runtime identity e configurar a identidade OAuth do Scheduler;
-5. forneça imagem de container existente;
-6. autentique Terraform por ADC ou Workload Identity Federation.
+1. enable the Cloud Run and Cloud Scheduler APIs in the target project;
+2. create the runtime and scheduler service accounts;
+3. grant the runtime service account only the workload permissions required by the batch code;
+4. ensure the Terraform deployer can attach the runtime identity and configure the Scheduler OAuth identity;
+5. provide an existing container image;
+6. authenticate Terraform using ADC or Workload Identity Federation.
 
-Nenhuma chave de service account é necessária ou esperada.
+No service account key is required or expected.
 
-## Variáveis de exemplo
+## Example variables
 
 ```hcl
 project_id                = "my-project"
@@ -67,24 +67,24 @@ schedule                  = "0 2 * * *"
 time_zone                 = "America/Sao_Paulo"
 ```
 
-Não faça commit de arquivos `.tfvars` reais.
+Do not commit real `.tfvars` files.
 
-## Validação
+## Validation
 
-Este é root de exemplo, não root de deployment de ambiente. O CI o inicializa com backend desabilitado e valida sem autenticar no Google Cloud nem criar recursos.
+This is an example root, not an environment deployment root. CI initializes it with the backend disabled and validates it without authenticating to Google Cloud or creating resources.
 
 ```bash
 terraform init -backend=false -lockfile=readonly
 terraform validate
 ```
 
-O módulo reutilizável do job também é exercitado por testes nativos em `modules/cloud-run-job/tests/`.
+The reusable job module is additionally exercised by native Terraform tests under `modules/cloud-run-job/tests/`.
 
-## Considerações de produção
+## Production considerations
 
-- Tasks batch devem ser idempotentes porque retries podem executar novamente uma task com falha.
-- Use IAM específico do runtime em vez de roles amplas no projeto.
-- Conceda acesso Secret Manager no menor escopo prático.
-- Escolha task count e parallelism de acordo com particionamento e quotas regionais Cloud Run.
-- Trate retries do Scheduler separadamente dos retries de tasks: Scheduler repete a **request de execução**, enquanto `max_retries` repete uma **task dentro da execução**.
-- Use observabilidade/alertas para falhas de Scheduler e Cloud Run antes de adotar o padrão em produção.
+- Batch tasks should be idempotent because retries can re-run a failed task.
+- Use workload-specific runtime IAM rather than broad project roles.
+- Grant Secret Manager access at the narrowest practical resource scope.
+- Choose task count and parallelism according to workload partitioning and regional Cloud Run quotas.
+- Treat Scheduler retries separately from Cloud Run task retries: Scheduler retries the **execution request**, while `max_retries` retries a failed **task inside an execution**.
+- Use observability/alerting for failed Scheduler attempts and failed Cloud Run executions before adopting the pattern in production.
