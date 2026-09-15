@@ -24,7 +24,17 @@ This keeps runtime credentials separate from deployment credentials, Pub/Sub pus
 
 `modules/secret-manager` creates one `google_secret_manager_secret` metadata resource. Deletion protection is enabled by default, automatic replication is used unless locations are explicitly supplied, and no principal receives payload access by default.
 
-When `accessor_service_account_emails` is configured, the module adds one `google_secret_manager_secret_iam_member` per workload identity with exactly `roles/secretmanager.secretAccessor` on that secret.
+When `accessor_service_accounts` is configured, the module adds one `google_secret_manager_secret_iam_member` per workload identity with exactly `roles/secretmanager.secretAccessor` on that secret.
+
+The input is a map with caller-chosen stable keys and service account emails as values:
+
+```hcl
+accessor_service_accounts = {
+  api_runtime = module.api_identity.email
+}
+```
+
+The stable key (`api_runtime`) determines the Terraform resource instance address. The email remains a value and may therefore be unknown during the initial plan while the service account is being created in the same graph. Computed service-account emails must not be used as `for_each` keys.
 
 No project-level Secret Manager accessor role is created. This follows Google Cloud least-privilege guidance: a workload that needs one secret should receive access to that secret rather than every secret in the project.
 
@@ -69,7 +79,8 @@ The service account still requires the per-secret accessor binding; referencing 
 
 ## Operational notes
 
-- `latest` is convenient for the reference architecture but organizations may prefer a numeric version or managed alias for tighter rollout control.
+- stable accessor map keys should represent workload boundaries and must not be derived from computed attributes;
+- `latest` is convenient for the reference architecture but organizations may prefer a numeric version or managed alias for tighter rollout control;
 - changing secret metadata does not create or rotate secret payloads;
 - deleting protected secret metadata requires an explicit change to `deletion_protection` before Terraform can remove it;
 - IAM resources are additive members rather than authoritative whole-policy replacements.
