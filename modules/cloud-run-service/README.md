@@ -2,7 +2,7 @@
 
 Reusable Terraform child module for deploying request-serving .NET workloads to Google Cloud Run v2.
 
-The module intentionally owns only the Cloud Run service configuration. Runtime identities, IAM grants, Secret Manager resources, networking, Pub/Sub, and environment composition remain outside this module so roots can compose those capabilities explicitly.
+The module owns the Cloud Run service configuration, including optional Direct VPC egress. Runtime identities, IAM grants, Secret Manager resources, VPC lifecycle, Pub/Sub, and environment composition remain outside this module so roots can compose those capabilities explicitly.
 
 ## Security defaults
 
@@ -10,6 +10,8 @@ The module intentionally owns only the Cloud Run service configuration. Runtime 
 - Ingress defaults to `INGRESS_TRAFFIC_INTERNAL_ONLY`.
 - Provider-level deletion protection defaults to `true`.
 - Scaling defaults to `0..10` instances to preserve scale-to-zero while bounding reference-architecture cost exposure.
+- Direct VPC egress is disabled by default.
+- When Direct VPC is enabled, egress defaults to `PRIVATE_RANGES_ONLY`.
 - The module does not grant `allUsers`, `roles/run.invoker`, or any other IAM role.
 - Secret values are never module inputs. Secret-backed environment variables accept only a Secret Manager identifier and version.
 
@@ -24,6 +26,28 @@ The module validates Cloud Run platform limits before a deployment reaches the p
 - `PORT` and names starting with `X_GOOGLE_` are rejected for both literal and Secret Manager-backed environment variables because they are reserved by Cloud Run.
 
 These validations are covered by native Terraform negative tests so invalid configurations fail during CI rather than during deployment. If future requirements need 6/8 vCPU, the module should first expose or deliberately configure the Gen2 execution environment and add matching cross-validation.
+
+## Direct VPC egress
+
+The optional `direct_vpc` input renders Cloud Run v2 `vpc_access.network_interfaces`; it does not create a Serverless VPC Access connector.
+
+```hcl
+direct_vpc = {
+  network    = "blueprint-vpc"
+  subnetwork = "blueprint-us-central1"
+  egress     = "PRIVATE_RANGES_ONLY"
+  tags       = ["api", "serverless"]
+}
+```
+
+`direct_vpc = null` is the default and renders no `vpc_access` block. This preserves backward compatibility for callers that do not need private networking.
+
+Supported egress modes are:
+
+- `PRIVATE_RANGES_ONLY` — default; private ranges use the VPC while ordinary public traffic keeps Cloud Run's normal path;
+- `ALL_TRAFFIC` — explicit opt-in; callers are responsible for providing any Cloud NAT or other internet-egress path required by their environment.
+
+The `modules/vpc-network` output `direct_vpc` can be passed directly to this input. Network and subnetwork resources themselves remain owned by the network module/root.
 
 ## Usage
 
@@ -58,6 +82,8 @@ module "api" {
     }
   }
 
+  direct_vpc = module.network.direct_vpc
+
   labels = {
     component  = "api"
     managed-by = "terraform"
@@ -83,6 +109,7 @@ Using `INGRESS_TRAFFIC_ALL` only changes the network ingress setting. It does **
 | `max_instance_request_concurrency` | `number` | `80` | Maximum concurrent requests per instance, from 1 through 1000. |
 | `timeout` | `string` | `300s` | Maximum request duration, capped at 3600 seconds. |
 | `ingress` | `string` | `INGRESS_TRAFFIC_INTERNAL_ONLY` | Supported Cloud Run ingress policy. |
+| `direct_vpc` | `object` | `null` | Optional Direct VPC network/subnetwork, egress mode, and network tags. |
 | `deletion_protection` | `bool` | `true` | Provider-level service deletion protection. |
 | `environment_variables` | `map(string)` | `{}` | Literal, non-secret environment variables. Reserved Cloud Run names are rejected. |
 | `secret_environment_variables` | `map(object)` | `{}` | Secret Manager references keyed by non-reserved environment variable name. |
@@ -111,7 +138,7 @@ terraform validate
 terraform test
 ```
 
-The unit tests cover secure defaults, resource mapping, output forwarding, CPU/memory platform constraints, Gen2-only CPU rejection, reserved environment variable names, input validation, and conflicting environment variable sources.
+The unit tests cover secure defaults, resource mapping, output forwarding, CPU/memory platform constraints, Gen2-only CPU rejection, reserved environment variable names, Direct VPC opt-in/default behavior, egress validation, network tags, and conflicting environment variable sources.
 
 ## Out of scope
 
@@ -120,7 +147,7 @@ This module does not create or manage:
 - service accounts or IAM bindings;
 - public invoker access;
 - Secret Manager secrets, versions, or secret payloads;
-- VPC networking;
+- VPC networks, subnets, NAT, routers, or Serverless VPC Access connectors;
 - Pub/Sub subscriptions;
 - Cloud Run Jobs;
 - Gen2 execution-environment selection;

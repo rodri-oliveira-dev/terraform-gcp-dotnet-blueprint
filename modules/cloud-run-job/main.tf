@@ -31,6 +31,20 @@ resource "google_cloud_run_v2_job" "this" {
       max_retries     = var.max_retries
       timeout         = var.task_timeout
 
+      dynamic "vpc_access" {
+        for_each = var.direct_vpc == null ? [] : [var.direct_vpc]
+
+        content {
+          egress = vpc_access.value.egress
+
+          network_interfaces {
+            network    = vpc_access.value.network
+            subnetwork = vpc_access.value.subnetwork
+            tags       = sort(tolist(vpc_access.value.tags))
+          }
+        }
+      }
+
       containers {
         image = var.container_image
 
