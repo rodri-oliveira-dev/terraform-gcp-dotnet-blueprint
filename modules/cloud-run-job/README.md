@@ -2,7 +2,7 @@
 
 Reusable Terraform child module for finite .NET batch workloads that run to completion on Google Cloud Run Jobs.
 
-The module owns only the Cloud Run Job configuration. Scheduling, invocation IAM, runtime IAM grants, Secret Manager resources, networking, and environment composition remain outside the module so callers can compose those policies explicitly.
+The module owns the Cloud Run Job configuration, including optional Direct VPC egress. Scheduling, invocation IAM, runtime IAM grants, Secret Manager resources, VPC lifecycle, and environment composition remain outside the module so callers can compose those policies explicitly.
 
 ## Job versus service
 
@@ -18,6 +18,8 @@ Do not connect a Pub/Sub push subscription directly to this module. Event-driven
 - task timeout defaults to 600 seconds;
 - failed tasks retry up to three times by default;
 - CPU is deliberately limited to 1, 2, or 4 whole vCPU so the module does not silently depend on Gen2-only configurations;
+- Direct VPC egress is disabled by default;
+- when Direct VPC is enabled, egress defaults to `PRIVATE_RANGES_ONLY`;
 - secret values are never module inputs; only Secret Manager identifiers and versions are accepted.
 
 ## Execution configuration
@@ -29,6 +31,23 @@ Cloud Run supports up to 10,000 tasks per job execution. Each task gets Cloud Ru
 `max_retries` accepts 0 through 10. A value of 0 means a failed task is not retried.
 
 `task_timeout` uses whole seconds and is capped at 604800 seconds (7 days). GPU-specific limits are outside this module's current contract.
+
+## Direct VPC egress
+
+The optional `direct_vpc` input renders `vpc_access.network_interfaces` on the Cloud Run task template. It does not create or depend on a Serverless VPC Access connector.
+
+```hcl
+direct_vpc = {
+  network    = "blueprint-vpc"
+  subnetwork = "blueprint-us-central1"
+  egress     = "PRIVATE_RANGES_ONLY"
+  tags       = ["batch", "serverless"]
+}
+```
+
+`direct_vpc = null` is the default. The supported egress modes are `PRIVATE_RANGES_ONLY` and `ALL_TRAFFIC`; the former is the default for private dependencies such as Memorystore. `ALL_TRAFFIC` is explicit and may require Cloud NAT or another routed internet-egress design outside this module.
+
+The `modules/vpc-network` output `direct_vpc` can be passed directly to the job module.
 
 ## Example
 
@@ -42,9 +61,9 @@ module "batch" {
   container_image = "us-central1-docker.pkg.dev/my-project/apps/reconciliation:1.0.0"
   service_account = "reconciliation-runtime@my-project.iam.gserviceaccount.com"
 
-  task_count  = 4
-  parallelism = 2
-  max_retries = 3
+  task_count   = 4
+  parallelism  = 2
+  max_retries  = 3
   task_timeout = "1800s"
 
   environment_variables = {
@@ -57,6 +76,8 @@ module "batch" {
       version = "latest"
     }
   }
+
+  direct_vpc = module.network.direct_vpc
 }
 ```
 
@@ -90,6 +111,7 @@ Secret Manager access also remains outside this module. Grant the runtime identi
 | `max_retries` | `3` | Retries per failed task, 0–10. |
 | `task_timeout` | `600s` | Per-task timeout up to 7 days. |
 | `resources` | `1` vCPU / `512Mi` | CPU and memory limits. |
+| `direct_vpc` | `null` | Optional Direct VPC network/subnetwork, egress mode, and network tags. |
 | `environment_variables` | `{}` | Literal non-secret configuration. |
 | `secret_environment_variables` | `{}` | Secret Manager references only. |
 | `labels` | `{}` | Job labels. |
@@ -114,6 +136,8 @@ terraform validate
 terraform test
 ```
 
+Tests cover task/retry/resource validation, reserved environment names, Direct VPC opt-in/default behavior, egress validation, and network tag mapping.
+
 ## Out of scope
 
 - creating service accounts;
@@ -121,7 +145,7 @@ terraform test
 - scheduler creation;
 - invocation IAM;
 - Secret Manager resources or payloads;
-- Direct VPC egress;
+- VPC networks, subnets, NAT, routers, or Serverless VPC Access connectors;
 - GPUs;
 - explicit Gen2-only CPU configurations;
 - immediate execution during `terraform apply`.
