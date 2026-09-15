@@ -15,6 +15,20 @@ The module intentionally does not create secret versions and has no input for se
 
 Google Cloud recommends granting Secret Manager permissions at the lowest resource level practical. This module therefore uses additive `google_secret_manager_secret_iam_member` resources on the individual secret.
 
+## Stable accessor identity
+
+`accessor_service_accounts` is a map whose **keys are caller-chosen stable identifiers** and whose values are service account emails. The IAM resources use only the stable keys for `for_each` identity.
+
+This is important when the email comes from another Terraform resource or module and is therefore unknown during the initial plan. Computed emails remain map values, where unknown values are valid, instead of becoming `for_each` keys that Terraform must know before planning resource instances.
+
+```hcl
+accessor_service_accounts = {
+  api_runtime = module.api_identity.email
+}
+```
+
+Keep the keys static and semantically tied to the workload boundary; do not derive them from computed resource attributes.
+
 ## Example
 
 ```hcl
@@ -24,9 +38,9 @@ module "database_secret" {
   project_id = "my-project"
   secret_id  = "orders-database-url"
 
-  accessor_service_account_emails = [
-    module.api_identity.email,
-  ]
+  accessor_service_accounts = {
+    api_runtime = module.api_identity.email
+  }
 }
 
 module "api" {
@@ -49,7 +63,7 @@ The secret version referenced by `secret_reference.version` must already exist w
 | --- | --- | --- |
 | `project_id` | required | Project containing the secret. |
 | `secret_id` | required | Secret ID, 1-255 letters/digits/hyphens/underscores. |
-| `accessor_service_account_emails` | `[]` | Workload service accounts granted accessor on this secret only. |
+| `accessor_service_accounts` | `{}` | Stable caller-chosen IDs mapped to workload service account emails granted accessor on this secret only. |
 | `replication_locations` | `[]` | Empty for automatic replication; otherwise user-managed locations. |
 | `reference_version` | `latest` | Version/alias exposed to Cloud Run consumers. |
 | `deletion_protection` | `true` | Prevent accidental Terraform deletion of secret metadata. |
@@ -60,7 +74,7 @@ The secret version referenced by `secret_reference.version` must already exist w
 - `secret_id` — suitable for Cloud Run Secret Manager references;
 - `name` — fully qualified Secret Manager resource name;
 - `secret_reference` — `{ secret, version }` object directly compatible with the existing Cloud Run service/job secret environment-variable contracts;
-- `accessor_service_account_emails` — explicit set of principals granted access.
+- `accessor_service_accounts` — stable accessor IDs mapped to the principals granted access.
 
 ## Secret version ownership
 
