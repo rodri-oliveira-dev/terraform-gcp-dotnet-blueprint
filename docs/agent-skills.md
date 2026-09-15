@@ -36,9 +36,9 @@ Google Cloud publishes Terraform-specific guidance covering remote state, reusab
 ## Skills intentionally not installed
 
 - Terraform provider-development skills: this repository consumes providers; it does not implement one.
-- Terraform import/search skills: importing an existing estate is outside the current reference-architecture roadmap.
-- Terraform Stacks: the current ADR intentionally uses explicit environment root modules rather than HCP Terraform Stacks.
-- Terraform Policy: policy-as-code may be introduced later, but it is not required by the current eight-issue roadmap.
+- Terraform import/search skills: importing an existing estate is outside the v1.0 reference-architecture scope.
+- Terraform Stacks: the architecture intentionally uses explicit environment root modules rather than HCP Terraform Stacks.
+- Terraform Policy: policy-as-code is an optional organizational extension, not a v1.0 baseline requirement.
 - Azure-specific skills: the target cloud is Google Cloud.
 
 ## Maintenance rule
