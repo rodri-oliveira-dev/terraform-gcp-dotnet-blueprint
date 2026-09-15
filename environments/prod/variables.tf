@@ -115,6 +115,31 @@ variable "scheduler_time_zone" {
   }
 }
 
+variable "observability_notification_channels" {
+  type        = set(string)
+  description = "Existing Cloud Monitoring notification channel resource names attached to production alert policies. Destinations are managed outside this root."
+  default     = []
+
+  validation {
+    condition = alltrue([
+      for channel in var.observability_notification_channels :
+      can(regex("^projects/[^/]+/notificationChannels/[^/]+$", channel))
+    ])
+    error_message = "observability_notification_channels entries must use projects/PROJECT/notificationChannels/CHANNEL_ID resource names."
+  }
+}
+
+variable "observability_thresholds" {
+  type = object({
+    cloud_run_server_error_ratio      = optional(number, 0.05)
+    pubsub_oldest_unacked_age_seconds = optional(number, 300)
+    redis_memory_usage_ratio          = optional(number, 0.80)
+    redis_system_memory_usage_ratio   = optional(number, 0.80)
+  })
+  description = "Production alert thresholds. These defaults are operational baselines, not workload-specific SLO commitments."
+  default     = {}
+}
+
 variable "labels" {
   type        = map(string)
   description = "Additional labels merged into the standard production labels."
