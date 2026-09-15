@@ -2,238 +2,236 @@
 
 ## Purpose
 
-This repository is a reference implementation for provisioning production-oriented .NET workloads on Google Cloud with Terraform.
+This repository is a production-oriented Terraform reference architecture for .NET workloads on Google Cloud. It separates bootstrap concerns, reusable infrastructure capabilities, environment policy, delivery controls and operational guidance so each layer can evolve without collapsing into one monolithic state.
 
-The repository separates reusable infrastructure capabilities from environment-specific composition. Application code is deliberately kept out of scope except where a minimal container image or sample workload is required to validate infrastructure behavior.
+The blueprint is intentionally opinionated about boundaries and secure defaults, but it is not a universal production template. Capacity, SLOs, public-edge design, organization policy and business-specific controls remain workload decisions.
 
-## Architectural boundaries
+## Final architecture
+
+```mermaid
+flowchart LR
+    subgraph GitHub[GitHub]
+        PR[Pull request]
+        CI[Credential-free CI]
+        PLAN[Manual plan]
+        APPLY[Controlled apply]
+        OIDC[OIDC token]
+    end
+
+    subgraph Bootstrap[Bootstrap lifecycle]
+        STATE[(GCS state bucket)]
+        WIF[Workload Identity Federation]
+        DEPLOYER[Deployment SA]
+    end
+
+    subgraph Env[Environment root: dev or prod]
+        API[Cloud Run API]
+        PS[Pub/Sub]
+        WORKER[Cloud Run worker]
+        DLQ[DLQ]
+        SCHED[Cloud Scheduler]
+        JOB[Cloud Run Job]
+        SECRET[Secret Manager]
+        VPC[VPC + subnet]
+        PSA[Private Service Access]
+        REDIS[Memorystore Redis]
+        MON[Monitoring alert policies]
+    end
+
+    PR --> CI
+    PLAN --> OIDC
+    APPLY --> OIDC
+    OIDC --> WIF --> DEPLOYER
+    DEPLOYER --> STATE
+    DEPLOYER --> Env
+
+    API --> PS --> WORKER
+    PS -. dead-letter .-> DLQ
+    SCHED -->|OAuth / Run Admin API| JOB
+
+    API --> SECRET
+    WORKER --> SECRET
+    JOB --> SECRET
+
+    API --> VPC
+    WORKER --> VPC
+    JOB --> VPC
+    VPC --> PSA --> REDIS
+
+    API --> MON
+    WORKER --> MON
+    PS --> MON
+    JOB --> MON
+    REDIS --> MON
+```
+
+The major design rule is that control planes stay explicit: Pub/Sub delivers requests to a Cloud Run **service**, while finite batch work is a Cloud Run **job** started through the Run Admin API. The environment roots do not make the API public by default.
+
+## Architectural layers
 
 ### Bootstrap
 
-`bootstrap/` contains infrastructure that must exist before the regular Terraform roots can use it, such as the Cloud Storage bucket used for remote state and the Workload Identity Federation trust used by GitHub Actions.
+`bootstrap/state` owns the protected Cloud Storage bucket used by later Terraform states. It intentionally begins with local state because a backend cannot depend on itself.
 
-Bootstrap code must remain intentionally small because it has a different lifecycle from workload infrastructure.
+`bootstrap/github-actions-wif` owns the GitHub OIDC trust boundary and dedicated deployment identity. The default trust restricts admission using immutable GitHub owner/repository IDs plus `refs/heads/main`.
 
-`bootstrap/state` is self-bootstrapping and deliberately starts with local state. `bootstrap/github-actions-wif` is created after the state bucket exists and therefore uses the GCS backend.
+Bootstrap has a different lifecycle from application environments and should remain small, reviewed and rarely changed.
 
 ### Reusable modules
 
-`modules/` contains focused child modules. Each module should:
+`modules/` contains focused capabilities rather than complete environments:
 
-- own one infrastructure capability or tightly related capability set;
-- expose explicit inputs and outputs;
-- avoid environment-specific assumptions;
-- avoid hidden cross-module dependencies;
-- include validation for relevant inputs;
-- document security-sensitive defaults.
+- `cloud-run-service` — one request-serving Cloud Run v2 service;
+- `cloud-run-job` — one finite Cloud Run v2 job;
+- `pubsub` — topic/subscription, retry, DLQ and authenticated push relationships;
+- `runtime-identity` — keyless workload service account;
+- `secret-manager` — secret metadata plus scoped accessor relationships;
+- `vpc-network` — custom VPC, subnet and Private Service Access foundation;
+- `memorystore-redis` — private Redis instance with AUTH/TLS defaults;
+- `observability-alerts` — Cloud Monitoring alert-policy baseline.
 
-Reusable modules do not configure provider credentials or backends. Roots inject project, region, identities, and environment-specific policy.
+Child modules do not own backends, provider credentials, environment constants or application secret payloads.
 
 ### Environment roots
 
-`environments/dev` and `environments/prod` are Terraform root modules. They compose reusable modules and contain environment-specific configuration.
+`environments/dev` and `environments/prod` compose the same capabilities and own policy differences such as CIDRs, Redis tier/capacity, compute sizing, scaling, retry thresholds and observability thresholds.
 
-Environment roots are responsible for:
+Each root has its own fixed GCS prefix (`environments/dev` or `environments/prod`). Both use the same two-phase secret bootstrap and one-way workload activation model.
 
-- provider configuration;
-- backend configuration;
-- module composition;
-- environment-specific sizing and scaling;
-- environment-specific labels and policy choices.
+### Delivery
 
-### Examples
+Pull-request CI remains credential-free. It runs Terraform formatting, backend-disabled initialization/validation, native tests, TFLint and Trivy.
 
-`examples/` demonstrates isolated module consumption where doing so improves discoverability or testability. Examples are not substitutes for the environment roots.
-
-## Target runtime architecture
-
-The reference workload consists of:
-
-1. A .NET API hosted on a Cloud Run v2 service.
-2. Pub/Sub for asynchronous message delivery.
-3. A request-serving Cloud Run v2 worker service that receives Pub/Sub push deliveries.
-4. A separate Cloud Run Job for finite batch or scheduled processing, invoked through supported execution mechanisms such as Cloud Scheduler calling the authenticated Cloud Run Admin API.
-5. Secret Manager for runtime secrets.
-6. A custom-mode VPC with Direct VPC egress for workloads that need private resources.
-7. Memorystore for Redis attached through Private Service Access for managed caching.
-8. Google Cloud IAM using least-privilege service accounts.
-9. Cloud Logging and Monitoring integrations for operational visibility.
-
-Pub/Sub does not directly execute a Cloud Run Job. Jobs expose an execution API rather than a request-serving endpoint, so event-driven message consumption is modeled through a Cloud Run service. Jobs remain available for workloads that are explicitly started and run to completion.
-
-### Cloud Run service module boundary
-
-`modules/cloud-run-service` owns a single request-serving `google_cloud_run_v2_service`. It is designed for both .NET APIs and request-serving worker services.
-
-The module controls workload-level configuration that belongs to the service itself:
-
-- container image and request port;
-- CPU, memory, CPU idle behavior, and startup CPU boost;
-- per-instance concurrency and request timeout;
-- revision-level automatic scaling bounds;
-- runtime service-account assignment;
-- literal environment variables and Secret Manager-backed environment references;
-- optional Direct VPC egress;
-- labels, ingress, and deletion protection.
-
-The module deliberately does **not** create service accounts, IAM grants, secrets, secret versions, VPC resources, Pub/Sub resources, Redis resources, or environment roots. Those capabilities remain separate so identity, access, networking, caching, and environment policy are composed explicitly by callers.
-
-A runtime service account is required rather than allowing Cloud Run to fall back implicitly to a project default identity. Secret-backed environment variables carry only a secret identifier and version; Terraform source never receives an application secret payload through this module.
-
-Secure defaults favor internal-only ingress, provider-level deletion protection, scale-to-zero, a bounded maximum instance count, and no public invocation IAM. A caller may choose broader ingress, but unauthenticated invocation requires a separate IAM decision outside this module.
-
-### Runtime identity and Secret Manager boundary
-
-`modules/runtime-identity` creates one Google service account for one workload boundary. It does not create service-account keys and does not accept arbitrary project IAM roles. The identity is passed explicitly into Cloud Run service/job modules.
-
-`modules/secret-manager` creates one Secret Manager metadata resource and optional additive IAM members. Access is granted with `roles/secretmanager.secretAccessor` on the individual secret to explicitly listed workload service accounts; no project-level accessor binding is created.
-
-Secret payload/version lifecycle is deliberately outside Terraform. The module does not create `google_secret_manager_secret_version` and has no variable for secret data. A trusted operator or delivery process creates and rotates versions independently. Terraform only carries secret identifiers and version/alias references.
-
-The intended composition is:
+Credentialed operations are manual and restricted to `main`:
 
 ```text
-Runtime identity
-      |
-      +--> Cloud Run service/job service_account
-      |
-      +--> roles/secretmanager.secretAccessor
-                    |
-                    v
-              Specific secret
-                    |
-                    v
-       version managed outside Terraform
+GitHub workflow_dispatch
+        |
+        v
+GitHub OIDC token
+        |
+        v
+Workload Identity Federation
+        |
+        v
+Dedicated deployment service account
+        |
+        +--> GCS backend
+        `--> selected GCP environment
 ```
 
-Different workloads should use different service accounts and receive access only to the secrets they require. Referencing a secret from Cloud Run does not grant access by itself; the secret-level IAM member is a separate explicit relationship.
+The plan workflow never uploads the binary plan/full JSON. The apply workflow requires explicit confirmation, blocks destructive changes by default, uses GitHub Environment protection, replans after approval and compares a fingerprint before applying the fresh saved plan.
 
-See `docs/runtime-identities-and-secrets.md` and `examples/runtime-secrets` for the full contract.
+See `docs/terraform-deployment.md`.
 
-### Private networking boundary
+## Runtime identity and secrets boundary
 
-`modules/vpc-network` owns the private network foundation:
+API, worker and batch use different runtime service accounts. Pub/Sub push and Cloud Scheduler use different transport/trigger identities from the workloads they invoke.
 
-- one custom-mode VPC;
-- one regional workload subnet;
-- an allocated Private Service Access range;
-- the Service Networking connection to `servicenetworking.googleapis.com`.
+`modules/secret-manager` grants `roles/secretmanager.secretAccessor` only to explicitly listed identities at individual-secret scope. Terraform creates secret containers and IAM but does not create application secret versions.
 
-The module does not create Serverless VPC Access connectors, Cloud NAT, workload firewall rules, or managed-service instances. Cloud Run services/jobs consume the module's `direct_vpc` output only when private network access is required.
-
-The intended workload path is:
+The environment lifecycle therefore has two phases:
 
 ```text
-Cloud Run Service / Job
+Foundation apply
+  ├─ network / PSA / Redis
+  ├─ identities
+  ├─ secret containers + IAM
+  └─ required APIs
+        |
+        v
+External trusted secret-version bootstrap
+        |
+        v
+Workload activation
+  ├─ API
+  ├─ worker + Pub/Sub
+  ├─ job + Scheduler
+  └─ Monitoring alert policies
+```
+
+Redis AUTH and server CA material follow the same rule: payload transfer is an operator/application concern and is not surfaced as Terraform outputs.
+
+## Networking boundary
+
+`modules/vpc-network` owns one custom-mode VPC, one regional workload subnet, one allocated PSA range and the Service Networking connection. Cloud Run services/jobs use Direct VPC egress; the blueprint does not create a Serverless VPC Access connector.
+
+```text
+Cloud Run service/job
         |
         | Direct VPC egress
         v
-Workload subnet / VPC
+workload subnet / VPC
         |
-        +--> Private Service Access --> Memorystore for Redis
+        v
+Private Service Access
+        |
+        v
+Memorystore for Redis
 ```
 
-Private Service Access and the workload subnet are separate address-management concerns even though they belong to the same VPC. Environment roots own the final CIDR plan.
+Subnet CIDRs and PSA ranges are separate allocations and must be reviewed against organization routing/address plans before adoption.
 
-See `docs/networking.md` and `examples/vpc-network` for the network contract.
+## Redis boundary
 
-### Memorystore for Redis boundary
+`modules/memorystore-redis` fixes the connectivity model to `PRIVATE_SERVICE_ACCESS`, enables AUTH and TLS by default, and uses provider-level deletion prevention. `prod` composes `STANDARD_HA`; `dev` intentionally uses `BASIC` to demonstrate a cost-oriented environment policy without weakening AUTH/TLS.
 
-`modules/memorystore-redis` owns one `google_redis_instance` and consumes an existing fully qualified VPC network ID. The module fixes the connection mode to `PRIVATE_SERVICE_ACCESS` and assumes the Service Networking connection already exists.
+State remains sensitive because provider-computed values can persist even when no output exposes them. Backend access is therefore part of the Redis security model.
 
-The production-oriented defaults are:
+## Observability boundary
 
-- `STANDARD_HA` tier;
-- Redis 7.2;
-- Redis AUTH enabled;
-- TLS in-transit encryption with server authentication;
-- provider-level deletion prevention.
+`modules/observability-alerts` owns platform alert policies only. Environment roots supply actual resource names, thresholds and existing notification channel resource names.
 
-`BASIC` is available for explicitly lower-cost environments, but it does not implicitly disable AUTH or TLS.
+The baseline covers Cloud Run 5xx ratio, Pub/Sub stale backlog/DLQ forwarding, failed Cloud Run Job executions and Redis pressure/rejected connections.
 
-The Redis AUTH string is generated by Memorystore. The module intentionally does not output it or create a Secret Manager version from it. A trusted operator/delivery process owns retrieval and distribution. Similarly, server CA certificate payloads are not module outputs; TLS trust material remains an application/runtime delivery concern.
+Application code owns semantic logs, traces, custom metrics and redaction. Notification destinations/secrets are organization-owned concerns outside this Terraform state. SLO targets are not invented by the blueprint.
 
-Terraform state is still security-sensitive because provider-computed attributes can be persisted even when no output exposes them. The protected GCS state bucket therefore remains part of the Redis security boundary.
+See `docs/observability.md`.
 
-A root composing `modules/vpc-network` and `modules/memorystore-redis` must ensure the Private Service Access connection exists before Redis creation. `examples/memorystore-redis` represents that dependency explicitly with module-level `depends_on`.
+## State and recovery boundary
 
-See `docs/memorystore-redis.md` and `examples/memorystore-redis` for the full cache contract.
+The GCS state bucket uses versioning, uniform bucket-level access, public access prevention, `force_destroy = false` and Terraform `prevent_destroy`. Environment states use isolated prefixes.
 
-## Delivery architecture
+Recovery is an operator procedure, not a CI feature. State restoration, `force-unlock`, state removal/import and lifecycle-protection changes must be deliberate and reviewed. See `bootstrap/state/README.md` and `docs/production-readiness.md`.
 
-GitHub Actions validates Terraform changes before merge. Authentication to Google Cloud uses Workload Identity Federation instead of long-lived service account keys.
+## Validation boundary
 
-The intended delivery flow is:
+There are intentionally two evidence levels:
 
-```text
-Pull Request
-    |
-    +--> terraform fmt
-    +--> terraform validate
-    +--> terraform test
-    +--> TFLint
-    +--> security scanning
+1. **Offline/contract validation** — PR CI and mocked Terraform tests; no GCP credentials.
+2. **Real-GCP plan validation** — manual WIF-authenticated plan from `main`, real GCS backend and provider/API refresh against `dev`.
 
-Merge / approved deployment
-    |
-    +--> GitHub OIDC
-            |
-            v
-       Workload Identity Federation
-            |
-            v
-       Dedicated deployment service account
-            |
-            v
-       Google Cloud
-```
+Neither proves runtime behavior. Issue #29 records the evidence required before claiming the second level has successfully executed. Creating/exercising billable resources is a separate explicitly authorized activity.
 
-### GitHub OIDC trust boundary
+## Deliberate non-goals
 
-The Google Cloud trust configuration is managed by `bootstrap/github-actions-wif`.
+The v1.0 baseline intentionally does not provide:
 
-The provider uses GitHub's OIDC issuer and admits tokens only when the immutable numeric GitHub owner ID and repository ID match the configured values and the token ref matches the explicitly allowed ref. Repository and owner names are not authorization boundaries.
+- public API edge/load balancer/API Gateway configuration;
+- custom DNS or managed certificates;
+- Cloud SQL or another relational database;
+- GKE/Kubernetes;
+- Cloud NAT or generic outbound-internet architecture;
+- organization/folder policies;
+- application container builds or business application code;
+- secret payload creation/rotation;
+- universal SLO targets or generic custom dashboards;
+- automatic destructive recovery, state surgery or `terraform destroy` workflows;
+- a claim that the reference sizing is appropriate for an arbitrary production workload.
 
-The federated repository principal receives only `roles/iam.workloadIdentityUser` on the dedicated deployment service account. The service account itself receives no Google Cloud project role by default. Concrete deployment permissions are added only when a later capability demonstrates that they are required, preferably at resource scope where the target service supports it.
-
-The GitHub side is implemented by `.github/workflows/gcp-auth-smoke.yml`. The workflow is manually invoked from `main`, where the default trust condition accepts the token ref. Workflow-wide permissions start empty, and only the authentication job receives `contents: read` plus `id-token: write`.
-
-The workflow uses `google-github-actions/auth` with the full provider resource name and dedicated service account, then runs `gcloud auth print-access-token` to force an actual token exchange and impersonation. Pull-request validation remains credential-free and therefore cannot authenticate to Google Cloud accidentally.
-
-## State strategy
-
-Terraform workload state will be stored remotely in Google Cloud Storage. State files and local variable files must never be committed to Git.
-
-The remote-state bucket is created by the independent `bootstrap/state` root. That bootstrap deliberately starts with local state because using the bucket as its own backend would create a circular dependency.
-
-The state bucket enables object versioning, uniform bucket-level access, and enforced public access prevention. Destructive removal is guarded with both `force_destroy = false` and Terraform lifecycle protection.
-
-Each workload root must use a distinct GCS backend prefix, such as `environments/dev` or `environments/prod`, to isolate state. Existing local state must be migrated explicitly with `terraform init -migrate-state`; migration is an operator-reviewed action rather than an implicit repository automation step.
-
-Provider-computed sensitive values, including generated service credentials, can be stored in state even if Terraform outputs do not expose them. Redis AUTH therefore reinforces the requirement to restrict remote-state access.
-
-See `bootstrap/state/README.md` for the bootstrap, backend migration, and recovery procedures.
+These are extension points, not missing hidden dependencies.
 
 ## Security principles
 
-- No service account keys stored in GitHub secrets.
-- GitHub OIDC trust is constrained by immutable owner/repository identifiers and an explicit Git ref.
-- OIDC permission is granted only to jobs that need to exchange a token.
-- Pull-request quality gates remain credential-free.
-- Generated `gha-creds-*.json` files are ignored.
-- Runtime workload identities are explicit rather than implicit project defaults.
-- Runtime identities do not receive generic project roles from their creation module.
-- Secret payload access is granted per secret to explicitly configured workload identities.
-- Application secret payloads and Secret Manager versions are not managed by Terraform in this repository.
-- Redis uses an explicit private VPC, Private Service Access, AUTH, and TLS by default.
-- Redis AUTH strings and server CA payloads are not exposed as Terraform outputs.
-- Least-privilege IAM roles wherever practical.
-- Deployment identities receive no broad project role by default.
-- Secrets are referenced from Secret Manager rather than stored in Terraform configuration.
-- Terraform state is treated as sensitive data.
-- Public access is disabled unless explicitly required by the reference scenario.
-- CI security checks should fail before deployment when high-confidence issues are detected.
+- keyless GitHub-to-GCP authentication;
+- least privilege and explicit IAM relationships;
+- separate runtime and transport identities;
+- no application secret payloads in Terraform source/variables;
+- private Redis connectivity, AUTH and TLS;
+- no public invocation by default;
+- sensitive remote state with isolated prefixes and recovery history;
+- credential-free pull-request validation;
+- immutable action pins plus Dependabot maintenance;
+- explicit approval and destructive-change acknowledgement before apply.
 
-## Evolution
-
-The architecture is intentionally incremental. Each roadmap issue should leave the repository in a valid, reviewable state rather than introducing all infrastructure in a single change.
+For adoption sequencing, operational risks and release-readiness criteria, see `docs/production-readiness.md`.
