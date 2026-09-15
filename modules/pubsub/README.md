@@ -24,6 +24,10 @@ For the reference architecture, authenticated push targets a request-serving Clo
 
 Pub/Sub dead-letter delivery attempts are best-effort. Consumers must remain idempotent and should not treat the configured attempt count as an exactly-once guarantee.
 
+When dead-letter names are omitted, the module derives them by appending `-dead-letter` to the primary topic/subscription names. The resulting names are validated against Pub/Sub's 255-character limit during planning; callers with long primary names must provide explicit valid dead-letter names.
+
+Subscription filters are deliberately restricted to printable ASCII and at most 256 characters. Because printable ASCII is one byte per character in UTF-8, this enforces Pub/Sub's 256-byte filter limit locally and avoids Unicode strings that would pass a character-count check but fail at provisioning time.
+
 ## IAM model
 
 When `manage_service_agent_iam = true` (default), the module grants only the permissions Pub/Sub itself needs:
@@ -92,9 +96,9 @@ See `examples/pubsub-worker` for composition with `modules/cloud-run-service` an
 | `message_retention_seconds` | `604800` | Subscription retention, 10 minutes through 31 days. |
 | `retain_acked_messages` | `false` | Retain acknowledged messages for replay. |
 | `enable_message_ordering` | `false` | Preserve ordering for messages sharing an ordering key. |
-| `filter` | `null` | Optional subscription filter. |
+| `filter` | `null` | Optional printable-ASCII subscription filter, maximum 256 bytes. |
 | `retry_policy` | `10..600s` | Minimum and maximum redelivery backoff. |
-| `dead_letter` | enabled | DLQ names, inspection subscription, and max attempts. |
+| `dead_letter` | enabled | DLQ names, inspection subscription, and max attempts. Derived names are validated against Pub/Sub's 255-character limit. |
 | `push_config` | `null` | HTTPS endpoint, push-auth service account, optional audience and payload-unwrapping settings. |
 | `manage_service_agent_iam` | `true` | Manage narrowly scoped IAM required by Pub/Sub transport. |
 | `labels` | `{}` | Labels applied to Pub/Sub resources. |
