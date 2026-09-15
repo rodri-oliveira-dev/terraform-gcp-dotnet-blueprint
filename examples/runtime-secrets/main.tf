@@ -23,9 +23,9 @@ module "api_database_secret" {
   secret_id  = "orders-database-url"
   labels     = var.labels
 
-  accessor_service_account_emails = [
-    module.api_identity.email,
-  ]
+  accessor_service_accounts = {
+    api_runtime = module.api_identity.email
+  }
 }
 
 module "worker_webhook_secret" {
@@ -35,9 +35,9 @@ module "worker_webhook_secret" {
   secret_id  = "orders-webhook-key"
   labels     = var.labels
 
-  accessor_service_account_emails = [
-    module.worker_identity.email,
-  ]
+  accessor_service_accounts = {
+    worker_runtime = module.worker_identity.email
+  }
 }
 
 locals {
