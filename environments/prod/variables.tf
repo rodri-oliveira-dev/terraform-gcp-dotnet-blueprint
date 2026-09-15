@@ -66,7 +66,7 @@ variable "batch_image" {
 
 variable "enable_workloads" {
   type        = bool
-  description = "Whether production request-serving services, Pub/Sub delivery, the batch job, and its scheduler are created. Keep false during the foundation/secret bootstrap phase."
+  description = "One-way workload activation flag. Keep false during foundation/secret bootstrap, then set true to create production workloads. Once applied as true in this state, changing it back to false is intentionally rejected before any workload destruction can occur."
   default     = false
 }
 
