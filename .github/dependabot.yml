@@ -19,3 +19,26 @@ updates:
         update-types:
           - "minor"
           - "patch"
+
+  - package-ecosystem: "terraform"
+    directories:
+      - "/bootstrap/*"
+      - "/environments/*"
+      - "/examples/*"
+      - "/modules/*"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:15"
+      timezone: "America/Sao_Paulo"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      terraform-minor-patch:
+        applies-to: version-updates
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
