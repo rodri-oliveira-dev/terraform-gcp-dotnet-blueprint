@@ -22,19 +22,20 @@ variable "secret_id" {
   }
 }
 
-variable "accessor_service_account_emails" {
-  type        = set(string)
-  description = "Service account emails granted roles/secretmanager.secretAccessor on this secret only."
-  default     = []
+variable "accessor_service_accounts" {
+  type        = map(string)
+  description = "Map of caller-chosen stable accessor IDs to service account emails granted roles/secretmanager.secretAccessor on this secret only. Keep map keys static even when email values come from other resources."
+  default     = {}
 
   validation {
     condition = alltrue([
-      for email in var.accessor_service_account_emails :
+      for key, email in var.accessor_service_accounts :
+      trimspace(key) != "" &&
       trimspace(email) != "" &&
       strcontains(email, "@") &&
       endswith(email, ".iam.gserviceaccount.com")
     ])
-    error_message = "Every accessor must be a Google service account email ending in .iam.gserviceaccount.com."
+    error_message = "Every accessor key must be non-empty and every accessor value must be a Google service account email ending in .iam.gserviceaccount.com."
   }
 }
 
