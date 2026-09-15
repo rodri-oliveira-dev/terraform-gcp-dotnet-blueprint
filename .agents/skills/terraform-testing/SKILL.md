@@ -1,75 +1,75 @@
 ---
 name: terraform-testing
-description: Design and implement Terraform native tests using plan-mode assertions, validation tests, mocks, and carefully scoped integration tests for modules in this repository.
+description: Projetar e implementar testes nativos Terraform usando assertions em modo plan, testes de validação, mocks e integration tests cuidadosamente restritos para módulos deste repositório.
 ---
 
-# Terraform Testing
+# Testes Terraform
 
-Use this skill when adding or reviewing `.tftest.hcl` files or deciding how Terraform behavior should be verified.
+Use esta skill ao adicionar ou revisar arquivos `.tftest.hcl` ou decidir como o comportamento Terraform deve ser verificado.
 
-## Testing hierarchy
+## Hierarquia de testes
 
-Prefer the cheapest test that proves the behavior:
+Prefira o teste de menor custo que comprove o comportamento:
 
-1. variable validation;
+1. validação de variável;
 2. `terraform validate`;
-3. plan-mode native Terraform test;
-4. mock-provider Terraform test;
-5. real-provider integration test only when necessary.
+3. teste nativo Terraform em modo plan;
+4. teste Terraform com mock provider;
+5. integration test com provider real somente quando necessário.
 
-Do not create live, billable infrastructure when a plan or mock test can prove the requirement.
+Não crie infraestrutura live e com custo quando plan ou mock puder comprovar o requisito.
 
-## Test organization
+## Organização dos testes
 
-Place module tests under the module's `tests/` directory.
+Coloque testes do módulo no diretório `tests/` correspondente.
 
-Use descriptive names such as:
+Use nomes descritivos, como:
 
 - `defaults_unit_test.tftest.hcl`;
 - `validation_unit_test.tftest.hcl`;
 - `security_unit_test.tftest.hcl`;
 - `integration_test.tftest.hcl`.
 
-Default unit tests to `command = plan`.
+Use `command = plan` como padrão para unit tests.
 
-## What to test
+## O que testar
 
-Prioritize observable module contracts:
+Priorize contratos observáveis do módulo:
 
-- defaults produce expected resource configuration;
-- invalid inputs are rejected;
-- optional resources are present/absent correctly;
-- scaling, retry, timeout, IAM, and security flags map correctly;
-- outputs expose the expected values;
-- sensitive outputs are not unnecessarily exposed;
-- module composition preserves required dependencies.
+- defaults produzem configuração esperada;
+- inputs inválidos são rejeitados;
+- recursos opcionais aparecem/desaparecem corretamente;
+- scaling, retry, timeout, IAM e flags de segurança são mapeados corretamente;
+- outputs expõem valores esperados;
+- outputs sensíveis não são expostos sem necessidade;
+- composição de módulos preserva dependências necessárias.
 
-Avoid assertions that merely restate implementation details without protecting behavior.
+Evite assertions que apenas repitam detalhes de implementação sem proteger comportamento.
 
 ## Mocks
 
-Use mock providers/data/resources when provider calls are not part of the behavior under test. Keep mock values realistic enough to exercise expressions and output contracts.
+Use mock providers/data/resources quando chamadas ao provider não fizerem parte do comportamento testado. Mantenha valores mock realistas o suficiente para exercitar expressions e contratos de output.
 
-If a test depends on actual Google Cloud behavior that Terraform cannot model with a plan or mock, classify it explicitly as integration testing and document required credentials, APIs, cost implications, and cleanup behavior.
+Se teste depender de comportamento real do Google Cloud que Terraform não consiga modelar com plan ou mock, classifique explicitamente como integration testing e documente credenciais, APIs, implicações de custo e cleanup necessários.
 
-## Negative tests
+## Testes negativos
 
-Use expected failures to prove variable validations reject invalid values. Error messages should make the failure understandable without inspecting provider internals.
+Use expected failures para provar que validações rejeitam valores inválidos. Mensagens de erro devem tornar a falha compreensível sem inspecionar internals do provider.
 
-## CI expectations
+## Expectativas de CI
 
-Unit tests should be safe to run on pull requests without cloud credentials when practical. Credentialed integration tests belong in a separately controlled workflow or stage.
+Unit tests devem ser seguros para executar em pull requests sem credenciais cloud quando prático. Integration tests autenticados pertencem a workflow ou stage separado e controlado.
 
-## Completion checklist
+## Checklist de conclusão
 
-- Tests target behavior, not formatting.
-- Unit tests do not mutate live infrastructure.
-- Integration tests are clearly identifiable.
-- Failure messages are diagnostic.
-- Tests are deterministic and do not depend on pre-existing personal cloud resources.
-- `terraform test` passes for the changed module when the required tooling is available.
+- Testes focam comportamento, não formatação.
+- Unit tests não alteram infraestrutura live.
+- Integration tests são claramente identificáveis.
+- Mensagens de falha são diagnósticas.
+- Testes são determinísticos e não dependem de recursos pessoais cloud preexistentes.
+- `terraform test` passa no módulo alterado quando tooling necessário estiver disponível.
 
-## References
+## Referências
 
 - https://developer.hashicorp.com/terraform/language/tests
 - https://github.com/hashicorp/agent-skills/tree/main/plugins/terraform/skills/terraform-test

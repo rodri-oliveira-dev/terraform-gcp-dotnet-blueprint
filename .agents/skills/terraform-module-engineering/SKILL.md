@@ -1,81 +1,81 @@
 ---
 name: terraform-module-engineering
-description: Design and review reusable Terraform child modules and environment root modules with explicit interfaces, cohesive responsibilities, safe composition, and GCP-oriented module boundaries.
+description: Projetar e revisar módulos filhos Terraform reutilizáveis e root modules de ambiente com interfaces explícitas, responsabilidades coesas, composição segura e limites orientados ao GCP.
 ---
 
-# Terraform Module Engineering
+# Engenharia de módulos Terraform
 
-Use this skill when creating, extending, or refactoring Terraform modules or environment composition.
+Use esta skill ao criar, estender ou refatorar módulos Terraform ou composição de ambientes.
 
-## Classify the module first
+## Classifique primeiro o módulo
 
-Determine whether the target is:
+Determine se o alvo é:
 
-- a reusable child module under `modules/`;
-- a root module under `environments/`;
-- bootstrap infrastructure under `bootstrap/`;
-- an isolated usage example under `examples/`.
+- módulo filho reutilizável em `modules/`;
+- root module em `environments/`;
+- infraestrutura de bootstrap em `bootstrap/`;
+- exemplo isolado em `examples/`.
 
-Do not blur these responsibilities for convenience.
+Não misture essas responsabilidades por conveniência.
 
-## Reusable child modules
+## Módulos filhos reutilizáveis
 
-A reusable module should:
+Um módulo reutilizável deve:
 
-- own one cohesive capability or a tightly coupled resource set;
-- expose explicit, typed inputs with sensible defaults only when a safe default exists;
-- expose useful outputs that let roots compose dependencies naturally;
-- avoid environment names, project IDs, regions, repository names, or organization-specific values unless provided as inputs;
-- avoid configuring backends or provider credentials;
-- avoid reaching into sibling modules directly;
-- expose labels where supported;
-- document security-sensitive behavior and assumptions.
+- possuir uma capacidade coesa ou conjunto de recursos fortemente relacionados;
+- expor inputs tipados explícitos com defaults somente quando existir padrão seguro;
+- expor outputs úteis que permitam composição natural de dependências pelos roots;
+- evitar nomes de ambiente, project IDs, regiões, nomes de repositório ou valores organizacionais, salvo quando recebidos por inputs;
+- evitar configurar backends ou credenciais de provider;
+- evitar acessar módulos irmãos diretamente;
+- expor labels onde suportado;
+- documentar comportamento e premissas sensíveis à segurança.
 
-If a module enables Google APIs itself, make that behavior explicit and safe to disable. Avoid disabling shared APIs on module destruction.
+Se um módulo habilitar APIs Google por conta própria, torne isso explícito e seguro para desabilitar. Evite desabilitar APIs compartilhadas ao destruir o módulo.
 
 ## Root modules
 
-Root modules own:
+Root modules são responsáveis por:
 
-- backend configuration;
-- provider configuration;
-- environment-specific values and sizing;
-- module composition;
-- environment-level labels and policy choices.
+- configuração de backend;
+- configuração de provider;
+- valores e sizing específicos do ambiente;
+- composição de módulos;
+- labels e escolhas de política no nível do ambiente.
 
-Keep root modules small enough that state ownership remains understandable. Do not move environment policy into a generic module merely to reduce line count.
+Mantenha roots pequenos o suficiente para que ownership do state permaneça compreensível. Não mova política de ambiente para módulo genérico apenas para reduzir linhas.
 
-## Interface design
+## Design de interface
 
-Prefer specific objects and collections over `map(any)`. Validate enum-like values, numeric ranges, identifiers, and mutually dependent settings where Terraform can produce a useful early error.
+Prefira objetos e coleções específicos a `map(any)`. Valide enums, ranges numéricos, identificadores e configurações interdependentes quando Terraform puder produzir erro antecipado útil.
 
-Outputs are contracts, not dumps of entire resources. Expose identifiers, URIs, names, or structured data consumers actually require.
+Outputs são contratos, não dumps de recursos inteiros. Exponha identificadores, URIs, nomes ou dados estruturados realmente necessários aos consumidores.
 
-## Refactoring existing state
+## Refatoração de state existente
 
-When moving existing resources into modules, preserve resource identity with `moved` blocks where possible. Do not assume a structural refactor is deployment-neutral without checking the plan.
+Ao mover recursos existentes para módulos, preserve identidade com blocos `moved` quando possível. Não presuma que refatoração estrutural é neutra para deployment sem verificar o plan.
 
-Never run destructive `terraform state` commands unless explicitly requested and backed by a reviewed migration procedure.
+Nunca execute comandos destrutivos de `terraform state` sem solicitação explícita e procedimento de migração revisado.
 
-## Testing and documentation
+## Testes e documentação
 
-For reusable modules:
+Para módulos reutilizáveis:
 
-- add native Terraform tests for validation/default/interface behavior when meaningful;
-- provide a focused usage example when it improves discoverability;
-- document inputs, outputs, assumptions, and security-relevant defaults.
+- adicione testes nativos Terraform para comportamento de validação/default/interface quando significativo;
+- forneça exemplo focado quando melhorar descoberta;
+- documente inputs, outputs, premissas e defaults relevantes à segurança.
 
-## Review checklist
+## Checklist de revisão
 
-- Is the module responsibility cohesive?
-- Are root-only concerns kept out of child modules?
-- Are inputs typed, minimal, and meaningful?
-- Are outputs sufficient for composition without exposing unnecessary implementation detail?
-- Are project/environment constants injected rather than hard-coded?
-- Would a refactor recreate resources unexpectedly?
-- Does documentation describe operator-visible behavior?
+- A responsabilidade do módulo é coesa?
+- Preocupações exclusivas de root ficaram fora dos módulos filhos?
+- Inputs são tipados, mínimos e significativos?
+- Outputs permitem composição sem expor detalhes desnecessários?
+- Constantes de projeto/ambiente são injetadas, não hard-coded?
+- Uma refatoração recriaria recursos inesperadamente?
+- A documentação descreve comportamento visível ao operador?
 
-## References
+## Referências
 
 - https://github.com/hashicorp/agent-skills/tree/main/plugins/terraform/skills/refactor-module
 - https://cloud.google.com/docs/terraform/best-practices/reusable-modules
