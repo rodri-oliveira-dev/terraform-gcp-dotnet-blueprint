@@ -1,59 +1,59 @@
 # Terraform GCP .NET Blueprint
 
-Production-oriented Terraform reference architecture for running .NET workloads on Google Cloud with secure defaults, reusable modules, isolated `dev`/`prod` roots, keyless delivery, private networking, messaging, caching and operational observability.
+Arquitetura de referência Terraform orientada a produção para executar workloads .NET no Google Cloud, com padrões seguros, módulos reutilizáveis, roots `dev`/`prod` isolados, entrega sem chaves, rede privada, mensageria, cache e observabilidade operacional.
 
-> **Status:** Architecture and repository capabilities are complete for the v1.0 baseline. The repository is a reference blueprint, not a universal production configuration. Real-GCP validation evidence is tracked separately in issue #29 and must not be inferred from offline CI alone.
+> **Status:** A arquitetura e as capacidades do repositório estão completas para o baseline v1.0. O repositório é um blueprint de referência, não uma configuração universal de produção. As evidências de validação em GCP real são acompanhadas separadamente na issue #29 e não devem ser inferidas apenas a partir do CI offline.
 
-## What this repository demonstrates
+## O que este repositório demonstra
 
-The blueprint focuses on infrastructure architecture rather than application complexity. It provides:
+O blueprint prioriza a arquitetura de infraestrutura em vez da complexidade da aplicação. Ele oferece:
 
-- reusable Terraform modules with typed inputs, validation and native tests;
-- complete `dev` and `prod` environment composition;
-- Cloud Run v2 services for request-serving API/worker workloads;
-- Cloud Run Jobs for finite batch execution;
-- authenticated Pub/Sub push delivery with retry and dead-letter handling;
-- Cloud Scheduler invoking the Cloud Run Admin API for scheduled jobs;
-- workload-specific runtime identities and resource-scoped IAM relationships;
-- Secret Manager metadata/access without application secret payloads in Terraform;
-- custom-mode VPC, Direct VPC egress and Private Service Access;
-- Memorystore for Redis with AUTH/TLS and production-oriented HA defaults;
-- Cloud Monitoring alert policies plus structured-logging and SLI/SLO guidance;
-- protected GCS remote state with environment-specific prefixes;
-- GitHub Actions Workload Identity Federation with no service-account keys;
-- credential-free PR validation and controlled manual plan/apply workflows;
-- Dependabot coverage for GitHub Actions and Terraform dependencies.
+- módulos Terraform reutilizáveis com entradas tipadas, validações e testes nativos;
+- composição completa dos ambientes `dev` e `prod`;
+- serviços Cloud Run v2 para workloads de API/worker orientados a requisições;
+- Cloud Run Jobs para execução de batch finito;
+- entrega push autenticada do Pub/Sub com retries e tratamento de dead-letter;
+- Cloud Scheduler invocando a Cloud Run Admin API para jobs agendados;
+- identidades de runtime específicas por workload e relações IAM com escopo de recurso;
+- metadados/acessos do Secret Manager sem payloads de segredos da aplicação no Terraform;
+- VPC em modo customizado, Direct VPC egress e Private Service Access;
+- Memorystore for Redis com AUTH/TLS e padrões de alta disponibilidade orientados a produção;
+- políticas de alerta do Cloud Monitoring, além de orientações para logs estruturados e SLI/SLO;
+- state remoto em GCS protegido, com prefixos específicos por ambiente;
+- Workload Identity Federation no GitHub Actions, sem chaves de service account;
+- validação de PR sem credenciais e workflows manuais controlados de plan/apply;
+- cobertura do Dependabot para GitHub Actions e dependências Terraform.
 
-## Architecture
+## Arquitetura
 
 ```mermaid
 flowchart TB
     subgraph GitHub[GitHub]
         PR[Pull request]
         CI[Terraform CI\nfmt · validate · test · TFLint · Trivy]
-        PLAN[Manual Terraform plan]
-        APPLY[Controlled Terraform apply]
+        PLAN[Terraform plan manual]
+        APPLY[Terraform apply controlado]
         OIDC[GitHub OIDC]
     end
 
     subgraph Bootstrap[Bootstrap]
-        STATE[(GCS remote state\nversioned / protected)]
+        STATE[(State remoto GCS\nversionado / protegido)]
         WIF[Workload Identity Federation]
-        DEPLOYER[Deployment service account]
+        DEPLOYER[Service account de deployment]
     end
 
-    subgraph Environment[dev / prod environment]
-        API[Cloud Run Service\n.NET API]
-        TOPIC[Pub/Sub topic]
-        WORKER[Cloud Run Service\n.NET worker]
-        DLQ[Dead-letter topic]
+    subgraph Environment[Ambiente dev / prod]
+        API[Cloud Run Service\nAPI .NET]
+        TOPIC[Tópico Pub/Sub]
+        WORKER[Cloud Run Service\nworker .NET]
+        DLQ[Tópico dead-letter]
         SCHED[Cloud Scheduler]
-        JOB[Cloud Run Job\n.NET batch]
+        JOB[Cloud Run Job\nbatch .NET]
         SECRETS[Secret Manager]
-        VPC[VPC + workload subnet]
+        VPC[VPC + subnet de workloads]
         PSA[Private Service Access]
         REDIS[Memorystore for Redis]
-        MON[Cloud Monitoring\nalert policies]
+        MON[Cloud Monitoring\npolíticas de alerta]
     end
 
     PR --> CI
@@ -64,7 +64,7 @@ flowchart TB
     DEPLOYER --> Environment
 
     API --> TOPIC --> WORKER
-    TOPIC -. exhausted delivery .-> DLQ
+    TOPIC -. entrega esgotada .-> DLQ
     SCHED -->|OAuth / Run Admin API| JOB
 
     API --> SECRETS
@@ -83,24 +83,24 @@ flowchart TB
     REDIS --> MON
 ```
 
-The API is not made public by default. Pub/Sub targets a request-serving Cloud Run worker; it does **not** directly execute the Cloud Run Job. Scheduled batch execution uses Cloud Scheduler against the authenticated Cloud Run Admin API.
+A API não é tornada pública por padrão. O Pub/Sub direciona mensagens a um worker Cloud Run orientado a requisições; ele **não** executa diretamente o Cloud Run Job. A execução de batch agendada usa o Cloud Scheduler contra a Cloud Run Admin API autenticada.
 
-See [`docs/architecture.md`](docs/architecture.md) for boundaries and design rationale.
+Consulte [`docs/architecture.md`](docs/architecture.md) para os limites e a justificativa das decisões de design.
 
-## Repository layout
+## Estrutura do repositório
 
 ```text
 .
-├── .agents/                     # repository-specific agent skills
+├── .agents/                     # skills específicas do repositório
 ├── .github/
-│   ├── scripts/                 # deployment/integration helpers
-│   └── workflows/               # CI, WIF smoke, plan and apply workflows
+│   ├── scripts/                 # helpers de deployment/integração
+│   └── workflows/               # CI, smoke de WIF, plan e apply
 ├── bootstrap/
-│   ├── state/                   # protected GCS state bucket
-│   └── github-actions-wif/      # GitHub OIDC/WIF trust foundation
+│   ├── state/                   # bucket GCS protegido para state
+│   └── github-actions-wif/      # fundação de confiança GitHub OIDC/WIF
 ├── environments/
-│   ├── dev/                     # cost-conscious reference environment
-│   └── prod/                    # production-oriented reference environment
+│   ├── dev/                     # ambiente de referência com foco em custo
+│   └── prod/                    # ambiente de referência orientado a produção
 ├── modules/
 │   ├── cloud-run-service/
 │   ├── cloud-run-job/
@@ -110,115 +110,115 @@ See [`docs/architecture.md`](docs/architecture.md) for boundaries and design rat
 │   ├── runtime-identity/
 │   ├── secret-manager/
 │   └── vpc-network/
-├── examples/                    # isolated module composition examples
-├── docs/                        # architecture and operator documentation
+├── examples/                    # exemplos isolados de composição dos módulos
+├── docs/                        # documentação de arquitetura e operação
 ├── AGENTS.md
 ├── CHANGELOG.md
 └── README.md
 ```
 
-## Secure delivery model
+## Modelo seguro de entrega
 
-Pull requests never receive GCP credentials. They run formatting, initialization/validation with the backend disabled, Terraform native tests, TFLint and Trivy.
+Pull requests nunca recebem credenciais do GCP. Eles executam formatação, inicialização/validação com backend desabilitado, testes nativos do Terraform, TFLint e Trivy.
 
-Credentialed operations are explicit and manual:
+As operações autenticadas são explícitas e manuais:
 
-1. GitHub Actions obtains an OIDC token from `refs/heads/main`.
-2. Workload Identity Federation admits only the configured immutable GitHub owner/repository IDs and allowed ref.
-3. The dedicated deployment service account is impersonated without a JSON key.
-4. `Terraform plan` initializes the selected remote backend and produces only a safe action/address summary.
-5. `Terraform apply` requires explicit confirmation, blocks destructive changes by default and uses GitHub Environment protection for the selected environment.
-6. The apply job replans after approval and requires the plan fingerprint to match before mutation.
+1. O GitHub Actions obtém um token OIDC a partir de `refs/heads/main`.
+2. O Workload Identity Federation admite apenas os IDs imutáveis configurados do owner/repositório GitHub e a ref permitida.
+3. A service account dedicada de deployment é impersonada sem chave JSON.
+4. O `Terraform plan` inicializa o backend remoto selecionado e produz apenas um resumo seguro de ações/endereços.
+5. O `Terraform apply` exige confirmação explícita, bloqueia mudanças destrutivas por padrão e usa a proteção de GitHub Environment para o ambiente selecionado.
+6. O job de apply refaz o plan após a aprovação e exige que o fingerprint do plano permaneça idêntico antes de qualquer mutação.
 
-See [`docs/terraform-deployment.md`](docs/terraform-deployment.md) and [`docs/gcp-integration-validation.md`](docs/gcp-integration-validation.md).
+Consulte [`docs/terraform-deployment.md`](docs/terraform-deployment.md) e [`docs/gcp-integration-validation.md`](docs/gcp-integration-validation.md).
 
-## Environment lifecycle
+## Ciclo de vida dos ambientes
 
-Both roots use a two-phase bootstrap because secret payloads are deliberately outside Terraform:
+Os dois roots usam bootstrap em duas fases porque os payloads de segredos ficam deliberadamente fora do Terraform:
 
 ```text
-state bootstrap
+bootstrap do state
     ↓
-WIF bootstrap + repository variables
+bootstrap do WIF + variáveis do repositório
     ↓
-environment foundation (enable_workloads = false)
+fundação do ambiente (enable_workloads = false)
     ↓
-external secret-version bootstrap
+bootstrap externo das versões dos segredos
     ↓
-workload activation (enable_workloads = true, one-way per state)
+ativação dos workloads (enable_workloads = true, transição unidirecional por state)
     ↓
-observability policies + operational tuning
+políticas de observabilidade + ajustes operacionais
 ```
 
-The activation flag is intentionally one-way after it has been applied as `true`; reverting it to `false` is blocked before partial teardown can occur.
+A flag de ativação é deliberadamente unidirecional depois de aplicada como `true`; revertê-la para `false` é bloqueado antes que uma remoção parcial possa ocorrer.
 
-See [`docs/environments.md`](docs/environments.md) for the `dev`/`prod` matrix and [`docs/production-readiness.md`](docs/production-readiness.md) for the end-to-end adoption procedure.
+Consulte [`docs/environments.md`](docs/environments.md) para a matriz `dev`/`prod` e [`docs/production-readiness.md`](docs/production-readiness.md) para o procedimento completo de adoção.
 
-## Security boundaries
+## Limites de segurança
 
-- No service-account keys in source control or GitHub secrets.
-- Public invocation is not granted by the environment roots.
-- Runtime identities are separate for API, worker and batch workloads.
-- Pub/Sub push and Cloud Scheduler use distinct transport/trigger identities.
-- Secret access is granted at individual-secret scope.
-- Terraform never manages application secret payload versions.
-- Redis AUTH and CA payloads are not exposed as Terraform outputs.
-- Direct VPC egress replaces a Serverless VPC Access connector for these workloads.
-- Redis uses Private Service Access, AUTH and TLS; production uses `STANDARD_HA` by default.
-- Terraform state is treated as sensitive and protected by GCS versioning/access controls.
-- Deletion protection is deliberate and must be removed explicitly before destructive lifecycle operations.
-- `roles/owner` and `roles/editor` are not acceptable shortcuts for the deployment identity.
+- Nenhuma chave de service account em controle de versão ou GitHub Secrets.
+- Invocação pública não é concedida pelos roots dos ambientes.
+- As identidades de runtime são separadas para API, worker e workloads de batch.
+- Pub/Sub push e Cloud Scheduler usam identidades distintas de transporte/disparo.
+- O acesso a segredos é concedido no escopo de cada segredo individual.
+- O Terraform nunca gerencia versões de payloads dos segredos da aplicação.
+- Payloads de Redis AUTH e CA não são expostos como outputs Terraform.
+- Direct VPC egress substitui um Serverless VPC Access connector para estes workloads.
+- O Redis usa Private Service Access, AUTH e TLS; produção usa `STANDARD_HA` por padrão.
+- O state Terraform é tratado como sensível e protegido por versionamento e controles de acesso do GCS.
+- A proteção contra exclusão é intencional e deve ser removida explicitamente antes de operações destrutivas de ciclo de vida.
+- `roles/owner` e `roles/editor` não são atalhos aceitáveis para a identidade de deployment.
 
-## Observability
+## Observabilidade
 
-The environment roots compose `modules/observability-alerts` when workloads are active. The baseline monitors:
+Os roots dos ambientes compõem `modules/observability-alerts` quando os workloads estão ativos. O baseline monitora:
 
-- Cloud Run HTTP 5xx ratio;
-- Pub/Sub oldest-unacked message age;
-- dead-letter forwarding;
-- failed Cloud Run Job executions;
-- Redis data/system memory pressure;
-- rejected Redis connections.
+- taxa HTTP 5xx do Cloud Run;
+- idade da mensagem não confirmada mais antiga no Pub/Sub;
+- encaminhamento para dead-letter;
+- execuções com falha de Cloud Run Jobs;
+- pressão de memória de dados/sistema no Redis;
+- conexões rejeitadas pelo Redis.
 
-Notification destinations are injected as existing Cloud Monitoring channel resource names and remain outside this state. Application logging/tracing semantics remain an application responsibility.
+Os destinos de notificação são injetados como nomes de recursos de canais existentes do Cloud Monitoring e permanecem fora deste state. A semântica de logging/tracing da aplicação continua sendo responsabilidade da aplicação.
 
-See [`docs/observability.md`](docs/observability.md).
+Consulte [`docs/observability.md`](docs/observability.md).
 
-## Production readiness
+## Prontidão para produção
 
-The repository contains a consolidated operator guide covering:
+O repositório contém um guia consolidado para operadores cobrindo:
 
-- zero-to-environment bootstrap order;
-- deployment and secret-bootstrap boundaries;
-- `dev` versus `prod` policy differences;
-- state recovery and deletion protection;
-- troubleshooting by failure domain;
-- known limitations and deliberate non-goals;
-- an adoption checklist;
-- a `v1.0.0` release-readiness checklist.
+- ordem de bootstrap do zero até o ambiente;
+- limites entre deployment e bootstrap de segredos;
+- diferenças de política entre `dev` e `prod`;
+- recuperação de state e proteção contra exclusão;
+- troubleshooting por domínio de falha;
+- limitações conhecidas e não objetivos deliberados;
+- checklist de adoção;
+- checklist de prontidão da release `v1.0.0`.
 
-Start with [`docs/production-readiness.md`](docs/production-readiness.md) and [`docs/troubleshooting.md`](docs/troubleshooting.md).
+Comece por [`docs/production-readiness.md`](docs/production-readiness.md) e [`docs/troubleshooting.md`](docs/troubleshooting.md).
 
-## Validation status and limits
+## Status e limites da validação
 
-Offline PR CI proves Terraform syntax/contracts, module tests, linting and static IaC security checks. A manual WIF-authenticated plan from `main` is the separate real-GCP validation layer. Issue #29 tracks the run evidence required before claiming successful backend/provider/API validation against a real development project.
+O CI offline de PR comprova sintaxe/contratos Terraform, testes dos módulos, linting e verificações estáticas de segurança IaC. Um plan manual autenticado via WIF a partir da `main` é a camada separada de validação em GCP real. A issue #29 acompanha a evidência do run necessária antes de afirmar que backend/provider/APIs foram validados com sucesso em um projeto real de desenvolvimento.
 
-A successful plan is **not** proof that workloads start correctly, Pub/Sub delivers successfully, Redis clients authenticate, alert notifications fire, or production capacity is sufficient. Those concerns require workload-specific deployment/verification outside the generic blueprint baseline.
+Um plan bem-sucedido **não** comprova que os workloads iniciam corretamente, que o Pub/Sub entrega mensagens com sucesso, que clientes Redis autenticam, que notificações de alertas disparam ou que a capacidade de produção é suficiente. Essas preocupações exigem deployment/verificação específicos do workload, fora do baseline genérico do blueprint.
 
-## Current toolchain
+## Toolchain atual
 
-- Terraform CLI pinned through `.terraform-version` (1.16.x baseline).
-- Google provider constrained to 8.x by current executable roots/modules; lock files pin selected provider builds.
-- Terraform native tests use plan mode and mocked providers where practical.
-- TFLint uses Terraform recommended rules plus the Google ruleset.
-- Trivy blocks HIGH/CRITICAL IaC findings in repository CI.
-- GitHub Actions are pinned to immutable commit SHAs.
-- Dependabot checks GitHub Actions and Terraform dependencies weekly; majors remain separately reviewable.
+- Terraform CLI fixado por `.terraform-version` (baseline 1.16.x).
+- Provider Google restrito a 8.x pelos roots/módulos executáveis atuais; lock files fixam os builds selecionados do provider.
+- Testes nativos do Terraform usam modo plan e providers mockados quando prático.
+- TFLint usa as regras recomendadas do Terraform mais o ruleset Google.
+- Trivy bloqueia achados IaC HIGH/CRITICAL no CI do repositório.
+- GitHub Actions estão fixadas por SHAs imutáveis de commit.
+- Dependabot verifica semanalmente GitHub Actions e dependências Terraform; majors permanecem isoladas para revisão.
 
 ## Release
 
-The first stable baseline is prepared as `v1.0.0`, but this repository does not create a tag or GitHub Release automatically. Review [`CHANGELOG.md`](CHANGELOG.md), [`docs/releases/v1.0.0.md`](docs/releases/v1.0.0.md), the release-readiness checklist, current CI, and issue #29 evidence before publishing.
+O primeiro baseline estável está preparado como `v1.0.0`, mas este repositório não cria tag nem GitHub Release automaticamente. Revise [`CHANGELOG.md`](CHANGELOG.md), [`docs/releases/v1.0.0.md`](docs/releases/v1.0.0.md), o checklist de prontidão da release, o CI atual e as evidências da issue #29 antes de publicar.
 
-## License
+## Licença
 
-Licensed under the MIT License. See [LICENSE](LICENSE).
+Licenciado sob a licença MIT. Consulte [LICENSE](LICENSE).
