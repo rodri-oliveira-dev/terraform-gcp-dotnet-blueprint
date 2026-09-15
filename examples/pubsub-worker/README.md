@@ -1,6 +1,6 @@
 # Pub/Sub push worker example
 
-This root demonstrates the event-driven half of issue #6:
+This root demonstrates the event-driven worker pattern in isolation:
 
 ```text
 Publisher
@@ -19,7 +19,7 @@ Cloud Run Service (.NET worker)
    +--> repeated failure: dead-letter topic --> inspection subscription
 ```
 
-The target is deliberately a **Cloud Run Service**, not a Cloud Run Job. Pub/Sub push delivery requires a request-serving HTTP endpoint; finite batch execution is modeled separately in issue #6 part 2.
+The target is deliberately a **Cloud Run Service**, not a Cloud Run Job. Pub/Sub push delivery requires a request-serving HTTP endpoint; finite batch execution is modeled separately with the Cloud Run Job/Scheduler pattern.
 
 ## Identity separation
 
@@ -32,18 +32,18 @@ The Pub/Sub module separately uses the Google-managed Pub/Sub service agent for 
 
 ## Prerequisites
 
-- Terraform 1.16.x;
+- Terraform version from the repository `.terraform-version`;
 - `run.googleapis.com` and `pubsub.googleapis.com` enabled;
 - an existing worker runtime service account;
 - an existing push-auth service account in the same project;
-- a deployer allowed to create Cloud Run/Pub/Sub resources, attach the push-auth service account (`iam.serviceAccounts.actAs`), and manage the narrow IAM bindings demonstrated here;
-- a container image whose HTTP endpoint understands the standard Pub/Sub push envelope and returns a success status only after processing succeeds.
+- a deployer allowed to create Cloud Run/Pub/Sub resources, attach the push-auth service account, and manage the narrow IAM relationships demonstrated here;
+- a container image whose HTTP endpoint understands the standard Pub/Sub push envelope and returns success only after processing succeeds.
 
-The example does not create service accounts because runtime identity lifecycle belongs to the IAM foundation rather than to workload modules.
+The example does not create service accounts because runtime identity lifecycle belongs to the IAM foundation rather than workload modules.
 
 ## Usage
 
-Create a local, ignored `.tfvars` file or provide variables through another secure mechanism:
+Provide variables through an ignored local `.tfvars` file or another secure mechanism:
 
 ```hcl
 project_id                     = "my-project"
@@ -60,32 +60,23 @@ terraform init -backend=false -lockfile=readonly
 terraform validate
 ```
 
-Applying this example would create billable Google Cloud resources and IAM changes. Agents and CI must not run `terraform apply` unless explicitly authorized.
+Applying this example creates Google Cloud resources/IAM changes and can incur cost. CI and agents must not run `terraform apply` unless explicitly authorized.
 
 ## Reliability behavior
 
-The example uses:
-
-- a 60-second acknowledgement deadline;
-- retry backoff from 10 to 300 seconds;
-- 7-day subscription retention;
-- dead-letter forwarding after approximately 10 delivery attempts;
-- a dead-letter inspection subscription;
-- no subscription expiration from inactivity.
-
-The worker must be idempotent. Pub/Sub push and dead-letter delivery are not an exactly-once processing contract, and the configured maximum delivery attempts is best-effort.
+The example uses bounded acknowledgement, retry, retention and dead-letter settings. The worker must be idempotent: Pub/Sub push/dead-letter delivery is not an exactly-once processing contract, and configured delivery-attempt counts are best effort.
 
 ## Cloud Run ingress
 
-The reused Cloud Run service module defaults to internal ingress. Pub/Sub push is intended to stay in the same Google Cloud project as this worker so the service can remain non-public while still using authenticated delivery. The push identity is additionally constrained by `roles/run.invoker` on only this service.
+The reused Cloud Run service module defaults to restrictive ingress. Pub/Sub push is intended to stay in the same Google Cloud project as this worker so the service can remain non-public while using authenticated delivery. The push identity is additionally constrained by `roles/run.invoker` on only this service.
 
-## What this example does not model
+## What this isolated example intentionally omits
 
 - publishers or publisher IAM;
 - application secrets;
 - VPC/Redis integration;
-- Cloud Run Jobs;
-- Cloud Scheduler;
-- environment state/backends.
+- Cloud Run Jobs and Cloud Scheduler;
+- remote environment state/backends;
+- environment-level alert policy composition.
 
-Those concerns are composed in later roadmap steps.
+Those capabilities are implemented by the complete roots under `environments/dev` and `environments/prod`. Use this example only to understand the Pub/Sub/worker module boundary; use the environment roots for the full reference architecture.

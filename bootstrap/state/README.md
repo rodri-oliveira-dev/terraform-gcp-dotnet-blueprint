@@ -1,44 +1,35 @@
 # Terraform state bootstrap
 
-This Terraform root creates the Cloud Storage bucket used by later environment roots as a remote backend.
+This Terraform root creates the Cloud Storage bucket used by later Terraform roots as the protected remote backend.
 
-It intentionally uses local state while bootstrapping because the remote backend cannot exist before this root creates it. The bootstrap state should be retained securely until the bucket exists and the bootstrap lifecycle is understood.
+It intentionally uses local state while bootstrapping because the remote backend cannot exist before this root creates it. Retain the bootstrap state securely until the bucket exists and its lifecycle/ownership is understood.
 
 ## Security defaults
 
 The bucket is configured with:
 
-- object versioning enabled for state recovery;
-- uniform bucket-level access enabled;
-- public access prevention enforced;
+- object versioning for recovery history;
+- uniform bucket-level access;
+- public access prevention;
 - `force_destroy = false`;
 - Terraform `prevent_destroy` lifecycle protection;
 - no credentials or secret values in source-controlled Terraform configuration.
 
-Terraform state is sensitive infrastructure data. Access to this bucket should be granted only to the identities that need to read or update Terraform state.
+Terraform state is sensitive infrastructure data. Access should be limited to identities that need to read or update the relevant state objects.
 
 ## Prerequisites
 
-- Terraform 1.16.x;
+- Terraform version from the repository `.terraform-version`;
 - a Google Cloud project with Cloud Storage available;
-- Application Default Credentials or another supported Google provider authentication method with permission to create and manage the state bucket.
+- an operator credential with permission to create/manage the state bucket.
 
 Do not create or commit a service-account key for this repository.
 
 ## Bootstrap
 
-Create a local variable file from the committed example:
-
 ```bash
 cd bootstrap/state
 cp terraform.tfvars.example terraform.tfvars
-```
-
-Edit `terraform.tfvars` with your own project ID and a globally unique bucket name. The real `terraform.tfvars` file is ignored by Git.
-
-Initialize and validate the root:
-
-```bash
 terraform init
 terraform fmt -check
 terraform validate
@@ -51,7 +42,7 @@ Review the plan before explicitly applying it:
 terraform apply
 ```
 
-`terraform apply` is intentionally a manual operator action and is not run automatically by repository agents or CI.
+`terraform apply` is a manual operator action. Pull-request CI never creates the state bucket.
 
 After creation, capture the bucket name:
 
@@ -59,31 +50,28 @@ After creation, capture the bucket name:
 terraform output -raw bucket_name
 ```
 
-## Configure an environment backend
+## Backend layout
 
-Environment roots will declare a GCS backend without embedding environment-specific bucket values in reusable modules. A root can declare:
+Use distinct prefixes for every independent root. The repository uses:
 
-```hcl
-terraform {
-  backend "gcs" {}
-}
+```text
+bootstrap/github-actions-wif
+environments/dev
+environments/prod
 ```
 
-Then initialize it using a backend configuration file or command-line values, for example:
+Environment `backend.tf` files fix their own prefixes; the bucket name is supplied at initialization time, for example:
 
 ```bash
-terraform init \
-  -backend-config="bucket=MY_STATE_BUCKET" \
-  -backend-config="prefix=environments/dev"
+terraform -chdir=environments/dev init \
+  -backend-config="bucket=MY_STATE_BUCKET"
 ```
 
-Use a distinct prefix for every independent Terraform root, such as `environments/dev` and `environments/prod`, so their states cannot overwrite one another.
-
-The GCS backend coordinates state updates and should be the only supported state location for workload environment roots once remote state is enabled.
+The controlled GitHub deployment workflows use the same bucket variable and environment-owned prefixes.
 
 ## Migrate existing local state
 
-If a root already has local state, add the GCS backend declaration and initialize with migration enabled:
+If a root already has local state, migration must be explicit and operator-reviewed:
 
 ```bash
 terraform init \
@@ -92,32 +80,41 @@ terraform init \
   -backend-config="prefix=environments/dev"
 ```
 
-Terraform will ask for confirmation before copying the existing state to the configured backend. Verify the migrated state before deleting any local backup.
-
-Never commit local state files, state backups, plan files, credentials, or real `.tfvars` files.
+Verify the migrated remote state before deleting any local backup. Never commit local state, backups, plan files, credentials or real `.tfvars` files.
 
 ## Recovery
 
-Object versioning is enabled so previous object generations remain available if a state object is overwritten or corrupted. Recovery should be treated as an operational procedure: identify the correct prior generation, preserve the current object for investigation, and restore only after confirming the intended state version.
+Object versioning keeps previous generations when a state object is overwritten. Recovery is an incident procedure, not an automated CI feature:
 
-Because the bucket has `prevent_destroy` and `force_destroy = false`, intentional removal requires an explicit code change before Terraform can destroy it. This is deliberate protection for infrastructure state.
+1. stop deployments for the affected root;
+2. preserve the current state object/generation for investigation;
+3. identify the intended prior generation and matching configuration commit;
+4. restore only after confirming that generation represents the desired state;
+5. run a plan before any apply and investigate unexpected replacements/deletions.
+
+Do not automate `force-unlock`, state removal/import or object-generation restoration in generic workflows.
+
+Because the bucket has `prevent_destroy` and `force_destroy = false`, intentional deletion requires explicit configuration/lifecycle changes before Terraform can remove it. This is deliberate protection.
+
+See `docs/production-readiness.md` and `docs/troubleshooting.md` for consolidated recovery guidance.
 
 ## Validation
 
-The expected local validation sequence for this root is:
+Repository CI validates this root without accessing the real backend where applicable. For local operator validation:
 
 ```bash
 terraform fmt -check
 terraform init
 terraform validate
+terraform plan
 ```
 
-Repository CI for these checks is introduced by roadmap issue #3. Until then, contributors should run the commands locally and report any validation they could not execute in the pull request.
+A successful offline CI run is not evidence that the current operator/deployment identity can access the live bucket. The manual WIF-authenticated plan workflow provides that separate real-backend validation layer.
 
 ## Outputs
 
 | Output | Description |
 | --- | --- |
-| `bucket_name` | Bucket name to configure in GCS backends. |
+| `bucket_name` | Bucket name consumed by Terraform backend initialization. |
 | `bucket_url` | `gs://` URL of the state bucket. |
 | `bucket_location` | Configured bucket location. |

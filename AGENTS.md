@@ -6,7 +6,7 @@ This repository is a production-oriented Terraform reference architecture for .N
 
 Before changing code, read the relevant sources of truth in this order:
 
-1. `README.md` for project intent and roadmap.
+1. `README.md` for project intent, implemented capabilities, release status, and documented limits.
 2. `docs/architecture.md` for architectural boundaries.
 3. Applicable records under `docs/adr/`.
 4. The GitHub issue being implemented, including its Definition of Ready and Definition of Done.

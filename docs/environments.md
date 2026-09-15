@@ -1,6 +1,6 @@
 # Environment composition
 
-The repository now provides two complete root modules under `environments/`:
+The repository provides two complete root modules under `environments/`:
 
 - `environments/dev` for cost-conscious development validation;
 - `environments/prod` for production-oriented availability and sizing defaults.
@@ -22,9 +22,15 @@ Pub/Sub --> authenticated push --> Cloud Run worker
 Cloud Scheduler --> OAuth --> Cloud Run Admin API --> Cloud Run Job
                                                    |-- Secret Manager
                                                    `-- Direct VPC egress --> Redis
+
+Cloud Monitoring alert policies
+    |-- Cloud Run 5xx ratio
+    |-- Pub/Sub backlog / DLQ
+    |-- failed Cloud Run Job executions
+    `-- Redis pressure / rejected connections
 ```
 
-Runtime identities are separate for API, worker, and batch. Pub/Sub push and Cloud Scheduler use separate transport/trigger identities. The API receives publisher access only on its environment-specific topic.
+Runtime identities are separate for API, worker and batch. Pub/Sub push and Cloud Scheduler use separate transport/trigger identities. The API receives publisher access only on its environment-specific topic.
 
 ## Dev versus prod
 
@@ -40,8 +46,11 @@ Runtime identities are separate for API, worker, and batch. Pub/Sub push and Clo
 | Pub/Sub DLQ threshold | 10 attempts | 20 attempts |
 | Batch | 1 task, parallelism 1, 1 vCPU / 512 MiB | 4 tasks, parallelism 2, 2 vCPU / 2 GiB |
 | Scheduler retries | 3 | 5 |
+| Cloud Run 5xx alert | 10% | 5% |
+| Pub/Sub oldest unacked age | 600 seconds | 300 seconds |
+| Redis memory alerts | 90% | 80% |
 
-These values demonstrate where environment policy belongs. They are reference defaults, not capacity recommendations for arbitrary workloads.
+These values demonstrate where environment policy belongs. They are reference defaults, not capacity recommendations or contractual SLOs for arbitrary workloads.
 
 ## Two-phase secret bootstrap
 
@@ -50,11 +59,13 @@ Both roots default `enable_workloads = false` because application secret payload
 The supported sequence is:
 
 1. initialize the environment backend;
-2. apply the foundation with workloads disabled;
+2. plan/apply the foundation with workloads disabled;
 3. populate versions for the secret IDs returned by `secret_bootstrap` through a trusted process;
-4. enable workloads;
+4. set `enable_workloads = true`;
 5. review the full plan;
-6. apply through an approved operator/delivery path.
+6. apply through the controlled delivery path.
+
+Once workload activation has been applied as `true`, changing it back to `false` is intentionally rejected by the activation lock. The flag is a bootstrap transition, not a general destroy switch.
 
 Do not use `terraform -target` as the normal deployment strategy and do not pass secret payloads through Terraform variables.
 
@@ -69,24 +80,31 @@ environments/prod
 
 This prevents normal state operations in one root from addressing the other environment's state object.
 
-## Deployment walkthrough
+## Deployment workflow
 
-From the selected environment directory:
+Credential-free pull-request CI uses `terraform init -backend=false` and never authenticates to GCP.
 
-```bash
-cp terraform.tfvars.example terraform.tfvars
-terraform init -backend-config="bucket=YOUR_TERRAFORM_STATE_BUCKET"
-terraform plan
-```
+After merge, manual workflows on `main` provide the controlled path:
 
-Review the foundation plan, then apply only through an explicitly authorized operator/delivery process. After secret versions exist, set `enable_workloads = true`, generate a new plan, review it, and apply.
+- **Terraform plan** — WIF-authenticated, initializes the real GCS backend and produces a safe action/address summary without uploading the binary plan;
+- **Terraform apply** — requires explicit environment/confirmation, blocks destructive changes by default, uses GitHub Environment protection, replans after approval and applies only when the plan fingerprint matches.
 
-Pull-request CI uses `terraform init -backend=false`; it validates configuration without accessing the remote state backend or creating Google Cloud resources.
+See `docs/terraform-deployment.md`.
 
 ## Public ingress
 
-Neither root grants unauthenticated invocation. The API URI may exist, but a public edge, API Gateway, external load balancer, or `allUsers` binding is intentionally outside the current reference architecture. Public exposure should be a separate explicit architectural decision.
+Neither root grants unauthenticated invocation. The API URI may exist, but a public edge, API Gateway, external load balancer, Cloud Armor, DNS/certificate setup or `allUsers` binding is intentionally outside the v1.0 reference architecture.
+
+Public exposure should be a separate explicit architectural decision.
 
 ## Observability
 
-Environment composition deliberately does not create alert policies or dashboards. Cloud Monitoring/Logging defaults, SLO guidance, and alert policy composition are tracked as follow-up observability work so deployment topology and operational policy remain independently reviewable.
+Both environment roots enable `monitoring.googleapis.com` and compose `modules/observability-alerts` when workloads are active.
+
+The signal set is shared while thresholds differ by environment. Notification destinations are injected as existing Cloud Monitoring notification channel resource names and remain outside this state.
+
+Application structured logging/tracing semantics, product SLIs/SLOs and burn-rate policy remain workload responsibilities. See `docs/observability.md`.
+
+## Operational guidance
+
+For bootstrap order, IAM/secrets boundaries, state recovery, deletion protection, adoption checklist and release-readiness guidance, see `docs/production-readiness.md`. For common failure modes, see `docs/troubleshooting.md`.
