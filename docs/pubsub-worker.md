@@ -1,108 +1,108 @@
-# Event-driven Pub/Sub worker pattern
+# Padrão de worker Pub/Sub orientado a eventos
 
-The blueprint separates two execution models:
+O blueprint separa dois modelos de execução:
 
-1. **event-driven processing** uses Pub/Sub push delivery to a request-serving Cloud Run Service;
-2. **finite batch processing** uses a Cloud Run Job started explicitly through a supported execution mechanism.
+1. **processamento orientado a eventos** usa entrega push do Pub/Sub para um Cloud Run Service que atende requisições;
+2. **processamento batch finito** usa Cloud Run Job iniciado explicitamente por um mecanismo suportado.
 
-This document covers the first model. Batch/Scheduler behavior is documented separately in `docs/batch-processing.md`.
+Este documento cobre o primeiro modelo. O comportamento de batch/Scheduler é documentado separadamente em `docs/batch-processing.md`.
 
-## Request flow
+## Fluxo de request
 
 ```text
 Publisher
    |
    v
-Primary Pub/Sub topic
+Tópico Pub/Sub principal
    |
    v
 Push subscription
-   |  OIDC token: push-auth service account
+   |  token OIDC: service account de push-auth
    v
-Cloud Run Service (.NET worker)
+Cloud Run Service (worker .NET)
    |
-   +--> 2xx: message acknowledged
+   +--> 2xx: mensagem confirmada
    |
-   +--> failure / ack deadline exceeded
+   +--> falha / ack deadline excedido
              |
              v
-          retry policy
+          política de retry
              |
-             +--> repeated failure --> dead-letter topic --> inspection subscription
+             +--> falha repetida --> tópico dead-letter --> subscription de inspeção
 ```
 
-Pub/Sub is not modeled as directly invoking a Cloud Run Job. A push subscription requires an HTTP endpoint that can acknowledge delivery through its response status.
+Pub/Sub não é modelado como invocação direta de Cloud Run Job. Uma push subscription exige endpoint HTTP que confirme entrega por status da resposta.
 
-## Module boundaries
+## Limites dos módulos
 
 ### `modules/cloud-run-service`
 
-Owns the request-serving worker runtime:
+É responsável pelo runtime do worker orientado a requisições:
 
-- container image and resources;
-- scaling and concurrency;
-- runtime service account;
-- environment variables and Secret Manager references;
-- ingress and deletion protection;
-- optional Direct VPC egress.
+- imagem e recursos do container;
+- scaling e concurrency;
+- service account de runtime;
+- environment variables e referências Secret Manager;
+- ingress e proteção contra exclusão;
+- Direct VPC egress opcional.
 
 ### `modules/pubsub`
 
-Owns transport and delivery behavior:
+É responsável pelo comportamento de transporte/entrega:
 
-- primary topic and subscription;
-- authenticated push configuration;
-- acknowledgement deadline and message retention;
-- retry policy;
-- dead-letter topic and inspection subscription;
-- transport-specific IAM for the Pub/Sub service agent.
+- tópico e subscription principais;
+- configuração de push autenticado;
+- acknowledgement deadline e retenção de mensagens;
+- política de retry;
+- tópico dead-letter e subscription de inspeção;
+- IAM específico de transporte para o service agent do Pub/Sub.
 
-### Root/environment composition
+### Composição no root/ambiente
 
-Owns relationships between capabilities:
+É responsável pelas relações entre capacidades:
 
-- grants the push-auth service account `roles/run.invoker` on the target Cloud Run Service;
-- supplies the Cloud Run URI to the Pub/Sub module;
-- supplies existing runtime and push-auth service accounts;
-- grants publisher permission to the API runtime identity on its environment topic;
-- composes secrets, Direct VPC egress, Redis connectivity and observability;
-- decides names, sizing, labels and environment policy.
+- concede `roles/run.invoker` à service account de push-auth no Cloud Run Service alvo;
+- fornece URI do Cloud Run ao módulo Pub/Sub;
+- fornece service accounts existentes de runtime e push-auth;
+- concede permissão de publisher à identidade de runtime da API no tópico do ambiente;
+- compõe segredos, Direct VPC egress, conectividade Redis e observabilidade;
+- decide nomes, sizing, labels e política de ambiente.
 
-This keeps reusable modules cohesive and prevents either module from reaching into the other implicitly.
+Isso mantém os módulos reutilizáveis coesos e impede dependências implícitas entre eles.
 
-## Identity model
+## Modelo de identidades
 
-The pattern uses three distinct identities:
+O padrão usa três identidades distintas:
 
-| Identity | Responsibility | Example permission |
+| Identidade | Responsabilidade | Exemplo de permissão |
 | --- | --- | --- |
-| Worker runtime service account | Credentials used by .NET application code | Resource-specific runtime permissions such as secret access |
-| Push-auth service account | Identity carried in the OIDC token sent to Cloud Run | `roles/run.invoker` on the target service |
-| Google-managed Pub/Sub service agent | Creates OIDC tokens and forwards dead-letter messages | Token Creator on the push-auth SA; publisher on DLQ topic; subscriber on source subscription |
+| Service account de runtime do worker | Credenciais usadas pelo código .NET | Permissões de runtime específicas, como acesso a segredos |
+| Service account de push-auth | Identidade no token OIDC enviado ao Cloud Run | `roles/run.invoker` no service alvo |
+| Service agent do Pub/Sub gerenciado pelo Google | Cria tokens OIDC e encaminha mensagens dead-letter | Token Creator na SA push-auth; publisher no tópico DLQ; subscriber na subscription origem |
 
-Keeping the identities separate avoids granting application permissions to the transport identity or invocation permissions to the application runtime identity.
+Separar identidades evita conceder permissões da aplicação à identidade de transporte ou permissões de invocação à identidade de runtime.
 
-## Delivery semantics
+## Semântica de entrega
 
-A worker must be idempotent. The transport can retry a message when the endpoint returns a failure or does not acknowledge within the deadline. Dead-letter forwarding and the maximum delivery-attempt count are best-effort behaviors rather than exactly-once processing guarantees.
+O worker deve ser idempotente. O transporte pode repetir mensagem quando o endpoint retorna falha ou não confirma dentro do deadline. Encaminhamento dead-letter e máximo de tentativas são comportamentos best-effort, não garantias exactly-once.
 
-The reusable module provides bounded retry/retention inputs; environment roots choose actual values. The current reference environments use different DLQ thresholds to demonstrate environment policy.
+O módulo reutilizável fornece inputs limitados de retry/retenção; os roots escolhem valores reais. Os ambientes de referência atuais usam thresholds de DLQ diferentes para demonstrar política de ambiente.
 
-## Authentication prerequisites
+## Pré-requisitos de autenticação
 
-Authenticated push requires:
+Push autenticado exige:
 
-- push-auth service account in the same project as the subscription;
-- deployment identity allowed to attach/manage the required service-account relationships;
-- Pub/Sub service agent allowed to mint OIDC tokens for the push-auth account;
-- push-auth account granted permission to invoke the target Cloud Run service.
+- service account de push-auth no mesmo projeto da subscription;
+- identidade de deployment autorizada a anexar/gerenciar as relações necessárias de service account;
+- service agent Pub/Sub autorizado a criar tokens OIDC para a conta push-auth;
+- conta push-auth com permissão para invocar o Cloud Run Service alvo.
 
-The module uses additive, resource-scoped IAM members where supported rather than project-wide authoritative policies.
+O módulo usa membros IAM aditivos com escopo de recurso quando suportados, em vez de políticas autoritativas no projeto inteiro.
 
-## Failure handling and observability
+## Tratamento de falhas e observabilidade
 
-The dead-letter topic has an inspection subscription so failed messages are retained for operator inspection or explicit reprocessing. Reprocessing is deliberately not automated because retrying a poison message without remediation can create an infinite failure loop.
+O tópico dead-letter possui subscription de inspeção para reter mensagens com falha para inspeção do operador ou reprocessamento explícito. Reprocessamento não é automatizado porque repetir poison message sem correção pode criar loop infinito.
 
-Environment roots compose Cloud Monitoring alert policies for stale backlog age and dead-letter forwarding through `modules/observability-alerts`. Operational thresholds differ between `dev` and `prod`; product-specific retry/replay procedures remain an application/operations responsibility.
+Os roots compõem políticas de alerta do Cloud Monitoring para idade de backlog e encaminhamento dead-letter por `modules/observability-alerts`. Thresholds operacionais diferem entre `dev` e `prod`; procedimentos específicos de retry/replay do produto continuam responsabilidade da aplicação/operações.
 
-See `docs/observability.md`, `docs/environments.md` and `docs/troubleshooting.md`.
+Consulte `docs/observability.md`, `docs/environments.md` e `docs/troubleshooting.md`.

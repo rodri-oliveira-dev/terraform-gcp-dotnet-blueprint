@@ -1,36 +1,36 @@
-# Private networking foundation
+# Fundação de rede privada
 
-## Purpose
+## Propósito
 
-The reference architecture uses a dedicated custom-mode VPC as the shared private-network boundary for Cloud Run workloads and managed services. Networking is intentionally modeled separately from workload compute, secrets, messaging, and cache resources so roots can compose those capabilities explicitly.
+A arquitetura de referência usa uma VPC dedicada em modo customizado como limite compartilhado de rede privada para workloads Cloud Run e serviços gerenciados. A rede é modelada separadamente de compute, segredos, mensageria e cache para que os roots componham essas capacidades explicitamente.
 
-Issue #19 is implemented in two parts:
+A issue #19 foi implementada em duas partes:
 
-1. **Part 1:** VPC, workload subnet, allocated Private Service Access range, and Service Networking connection.
-2. **Part 2:** optional Direct VPC egress for the existing Cloud Run service and Cloud Run Job modules.
+1. **Parte 1:** VPC, subnet de workloads, range alocado de Private Service Access e conexão com Service Networking.
+2. **Parte 2:** Direct VPC egress opcional para os módulos existentes de Cloud Run Service e Cloud Run Job.
 
-The completed contract keeps the VPC lifecycle separate from Cloud Run while exposing a small typed object that roots can pass directly into either workload module.
+O contrato concluído mantém o ciclo de vida da VPC separado do Cloud Run e expõe um pequeno objeto tipado que os roots podem passar diretamente para qualquer módulo de workload.
 
-## VPC and workload subnet
+## VPC e subnet de workloads
 
-`modules/vpc-network` creates a custom-mode `google_compute_network` and one regional `google_compute_subnetwork`.
+`modules/vpc-network` cria uma `google_compute_network` em modo customizado e uma `google_compute_subnetwork` regional.
 
-The custom-mode network disables Google Cloud's automatic regional subnet creation. Environment roots therefore own the address plan explicitly rather than inheriting the `10.128.0.0/9` auto-mode ranges.
+A rede em modo customizado desabilita a criação automática de subnets regionais do Google Cloud. Os roots de ambiente, portanto, são responsáveis explicitamente pelo plano de endereçamento, em vez de herdar ranges do auto mode `10.128.0.0/9`.
 
-The workload subnet:
+A subnet de workloads:
 
-- is IPv4-only in the current contract;
-- enables Private Google Access by default;
-- uses an explicit region and CIDR supplied by the caller;
-- does not create firewall rules, NAT, or external IP resources.
+- é somente IPv4 no contrato atual;
+- habilita Private Google Access por padrão;
+- usa região e CIDR explícitos fornecidos pelo caller;
+- não cria firewall rules, NAT nem recursos de IP externo.
 
-Google Cloud allows IPv4 subnet prefixes from `/4` through `/29`, subject to prohibited/overlapping-range checks. The module validates the basic IPv4/prefix contract locally; Google Cloud remains authoritative for conflicts with existing routes, peer networks, and reserved ranges.
+O Google Cloud permite prefixos IPv4 de subnet de `/4` a `/29`, sujeitos às verificações de ranges proibidos/sobrepostos. O módulo valida localmente o contrato básico de IPv4/prefixo; o Google Cloud continua sendo a autoridade para conflitos com rotas existentes, redes peer e ranges reservados.
 
 ## Private Service Access
 
-Private Service Access is separate from the workload subnet. It reserves an address range for a producer network and establishes a VPC peering relationship through the Service Networking API.
+Private Service Access é separado da subnet de workloads. Ele reserva um range para uma producer network e estabelece uma relação de peering VPC por meio da Service Networking API.
 
-The module creates:
+O módulo cria:
 
 ```text
 google_compute_global_address
@@ -42,32 +42,32 @@ google_service_networking_connection
   service = servicenetworking.googleapis.com
 ```
 
-The allocated range is supplied as an explicit IPv4 CIDR. This keeps address planning visible in Terraform rather than allowing a provider service to select an arbitrary range.
+O range alocado é fornecido como CIDR IPv4 explícito. Isso mantém o planejamento de endereços visível no Terraform em vez de permitir que um serviço do provider escolha um range arbitrário.
 
-For this blueprint, the accepted prefix range is `/8` through `/24`. The upper bound matches Memorystore for Redis Private Service Access guidance, which requires `/24` or a larger block when establishing the allocated range.
+Para este blueprint, o intervalo de prefixos aceito é de `/8` a `/24`. O limite superior corresponde à orientação do Memorystore for Redis para Private Service Access, que exige `/24` ou um bloco maior ao estabelecer o range alocado.
 
-The caller must ensure that the Private Service Access allocation does not overlap workload subnets, other allocated service ranges, VPC peering ranges, VPN/Interconnect routes, or on-premises networks that may become reachable later.
+O caller deve garantir que a alocação de Private Service Access não sobreponha subnets de workloads, outros ranges alocados de serviços, ranges de VPC peering, rotas VPN/Interconnect ou redes on-premises que possam se tornar alcançáveis posteriormente.
 
-## Service Networking lifecycle
+## Ciclo de vida do Service Networking
 
-`google_service_networking_connection` defaults to `deletion_policy = "PREVENT"` in this module.
+`google_service_networking_connection` usa `deletion_policy = "PREVENT"` por padrão neste módulo.
 
-This is deliberate. Once managed services consume the connection, deleting it can fail or break connectivity. A caller may set the policy to `DELETE` for an explicitly disposable environment, but that is an environment-level lifecycle decision and should be reviewed before apply.
+Isso é deliberado. Depois que serviços gerenciados consomem a conexão, excluí-la pode falhar ou quebrar conectividade. Um caller pode definir a política como `DELETE` em ambiente explicitamente descartável, mas essa é uma decisão de ciclo de vida no nível do ambiente e deve ser revisada antes do apply.
 
-The module does not expose `ABANDON` or `REMOVE_PEERING` as normal configuration options because both can leave the producer-side relationship or connectivity in a surprising state.
+O módulo não expõe `ABANDON` nem `REMOVE_PEERING` como opções normais porque ambas podem deixar a relação do producer ou a conectividade em estado inesperado.
 
-## API ownership
+## Ownership das APIs
 
-The module does not enable project APIs. Before apply, roots must ensure these APIs are enabled:
+O módulo não habilita APIs do projeto. Antes do apply, os roots devem garantir que estejam habilitadas:
 
 - `compute.googleapis.com`;
 - `servicenetworking.googleapis.com`.
 
-API enablement has a project-wide lifecycle and may be shared by multiple modules. Keeping it outside this child module avoids accidental API disablement or ownership conflicts during module removal.
+A habilitação de APIs possui ciclo de vida no projeto inteiro e pode ser compartilhada por vários módulos. Mantê-la fora deste módulo filho evita desabilitação acidental ou conflitos de ownership durante a remoção do módulo.
 
 ## Direct VPC egress
 
-Cloud Run Direct VPC egress does not require a Serverless VPC Access connector. Both `modules/cloud-run-service` and `modules/cloud-run-job` now accept the same optional `direct_vpc` object:
+Cloud Run Direct VPC egress não exige Serverless VPC Access connector. `modules/cloud-run-service` e `modules/cloud-run-job` aceitam o mesmo objeto opcional `direct_vpc`:
 
 ```hcl
 direct_vpc = {
@@ -78,35 +78,35 @@ direct_vpc = {
 }
 ```
 
-The network module exposes a directly composable baseline:
+O módulo de rede expõe um baseline diretamente componível:
 
 ```hcl
 direct_vpc = module.network.direct_vpc
 ```
 
-That output contains only `network` and `subnetwork`; the Cloud Run modules supply the safe egress default and empty tag set.
+Esse output contém apenas `network` e `subnetwork`; os módulos Cloud Run fornecem o padrão seguro de egress e conjunto vazio de tags.
 
-### Defaults and routing semantics
+### Padrões e semântica de roteamento
 
-`direct_vpc = null` is the default for both workload modules. In that state no `vpc_access` block is rendered, preserving the behavior of existing callers.
+`direct_vpc = null` é o padrão para os dois módulos de workload. Nesse estado nenhum bloco `vpc_access` é renderizado, preservando o comportamento de callers existentes.
 
-When Direct VPC is enabled:
+Quando Direct VPC está habilitado:
 
-- `network` and `subnetwork` are required and must be non-empty;
-- `egress` defaults to `PRIVATE_RANGES_ONLY`;
-- callers may explicitly choose `ALL_TRAFFIC`;
-- optional network tags are validated before reaching the provider;
-- no Serverless VPC Access connector is created or accepted by this contract.
+- `network` e `subnetwork` são obrigatórios e não podem estar vazios;
+- `egress` usa `PRIVATE_RANGES_ONLY` por padrão;
+- callers podem escolher explicitamente `ALL_TRAFFIC`;
+- tags de rede opcionais são validadas antes de chegar ao provider;
+- nenhum Serverless VPC Access connector é criado ou aceito pelo contrato.
 
-`PRIVATE_RANGES_ONLY` is the reference-architecture default because private dependencies such as Memorystore can use the VPC while ordinary public internet traffic keeps the platform's normal path. `ALL_TRAFFIC` is an explicit environment decision and may require Cloud NAT or another routed internet-egress design; this repository does not create those resources implicitly.
+`PRIVATE_RANGES_ONLY` é o padrão porque dependências privadas como Memorystore podem usar a VPC enquanto tráfego público comum mantém o caminho normal da plataforma. `ALL_TRAFFIC` é uma decisão explícita do ambiente e pode exigir Cloud NAT ou outro desenho de egress para internet; este repositório não cria esses recursos implicitamente.
 
-### Region ownership
+### Ownership de região
 
-The Cloud Run service/job location and the subnet region remain independent inputs. Environment roots are responsible for composing a subnet that is valid for the target Cloud Run workload. The network module exposes `subnet_region` so roots can validate or document that policy without the child modules reaching into one another.
+A localização do Cloud Run service/job e a região da subnet continuam entradas independentes. Os roots de ambiente são responsáveis por compor uma subnet válida para o workload Cloud Run alvo. O módulo de rede expõe `subnet_region` para que os roots validem ou documentem essa política sem que módulos filhos acessem uns aos outros.
 
-## Composition
+## Composição
 
-A root can compose the capabilities without hidden dependencies:
+Um root pode compor as capacidades sem dependências ocultas:
 
 ```hcl
 module "network" {
@@ -130,16 +130,16 @@ module "batch" {
 }
 ```
 
-Terraform infers the network-before-workload dependency through these values. No explicit `depends_on` is necessary.
+Terraform infere a dependência network-before-workload por esses valores. Nenhum `depends_on` explícito é necessário.
 
-## Deliberate exclusions
+## Exclusões deliberadas
 
-The networking capability does not create:
+A capacidade de rede não cria:
 
 - Serverless VPC Access connectors;
-- Cloud NAT or Cloud Router;
-- workload firewall rules;
-- Shared VPC host/service-project wiring;
-- Memorystore resources.
+- Cloud NAT ou Cloud Router;
+- firewall rules de workloads;
+- configuração de host/service project de Shared VPC;
+- recursos Memorystore.
 
-Those capabilities should be added only when a concrete workload requires them, rather than broadening the network module preemptively.
+Essas capacidades devem ser adicionadas somente quando um requisito concreto de workload as justificar, em vez de ampliar o módulo preventivamente.

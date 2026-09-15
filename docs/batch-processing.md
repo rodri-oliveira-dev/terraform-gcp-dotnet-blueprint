@@ -1,15 +1,15 @@
-# Scheduled batch processing
+# Processamento batch agendado
 
-## Purpose
+## Propósito
 
-Finite batch workloads use Cloud Run Jobs, not request-serving Cloud Run Services. A job starts explicitly, executes one or more tasks to completion, and then stops.
+Workloads batch finitos usam Cloud Run Jobs, não Cloud Run Services orientados a requisições. Um job inicia explicitamente, executa uma ou mais tasks até a conclusão e então termina.
 
-This repository models scheduled execution through Cloud Scheduler calling the authenticated Cloud Run Admin API.
+Este repositório modela execução agendada por Cloud Scheduler chamando a Cloud Run Admin API autenticada.
 
 ```text
 Cloud Scheduler
       |
-      | POST + OAuth access token
+      | POST + token de acesso OAuth
       v
 run.googleapis.com/v2/.../jobs/JOB:run
       |
@@ -21,88 +21,88 @@ Cloud Run Job
       +--> ...
 ```
 
-## Why Pub/Sub does not execute the job
+## Por que Pub/Sub não executa o job
 
-A Pub/Sub push subscription delivers an HTTP request to a request-serving endpoint. Cloud Run Jobs do not expose such an endpoint; they expose an execution API.
+Uma push subscription Pub/Sub entrega request HTTP a endpoint orientado a requisições. Cloud Run Jobs não expõem esse endpoint; expõem uma API de execução.
 
-The two runtime patterns therefore remain deliberately separate:
+Os dois padrões de runtime permanecem, portanto, deliberadamente separados:
 
 ```text
-Event-driven
-Pub/Sub --> authenticated push --> Cloud Run Service (.NET worker)
+Orientado a eventos
+Pub/Sub --> push autenticado --> Cloud Run Service (worker .NET)
 
-Finite / scheduled batch
+Batch finito / agendado
 Cloud Scheduler --> OAuth --> Cloud Run Admin API --> Cloud Run Job
 ```
 
-Do not model Pub/Sub as directly invoking a Cloud Run Job.
+Não modele Pub/Sub como invocação direta de Cloud Run Job.
 
-## Cloud Run Job module
+## Módulo Cloud Run Job
 
-`modules/cloud-run-job` owns only the batch workload configuration:
+`modules/cloud-run-job` é responsável somente pela configuração do workload batch:
 
-- container image;
-- explicit runtime service account;
+- imagem do container;
+- service account de runtime explícita;
 - task count;
 - parallelism;
-- retries per task;
-- per-task timeout;
-- CPU and memory;
-- literal environment variables;
-- Secret Manager references;
-- labels and deletion protection.
+- retries por task;
+- timeout por task;
+- CPU e memória;
+- environment variables literais;
+- referências Secret Manager;
+- labels e proteção contra exclusão.
 
-It exposes `execution_uri`, the supported Cloud Run Admin API `:run` endpoint. It does not create scheduler resources or invocation IAM.
+Ele expõe `execution_uri`, endpoint suportado `:run` da Cloud Run Admin API. Não cria recursos Scheduler nem IAM de invocação.
 
-## Scheduler composition
+## Composição do Scheduler
 
-`examples/scheduled-cloud-run-job` demonstrates the trigger boundary. Cloud Scheduler sends an authenticated HTTP `POST` to `execution_uri` with an OAuth access token generated for a dedicated scheduler service account.
+`examples/scheduled-cloud-run-job` demonstra o limite do trigger. Cloud Scheduler envia HTTP `POST` autenticado a `execution_uri` com access token OAuth gerado para service account dedicada do scheduler.
 
-The scheduler identity receives the additive `roles/run.invoker` role on the individual Cloud Run Job. That role contains `run.jobs.run`, so no project-wide Cloud Run role is required for the trigger.
+A identidade do scheduler recebe role aditiva `roles/run.invoker` no Cloud Run Job individual. Essa role contém `run.jobs.run`, então nenhuma role Cloud Run no projeto inteiro é necessária ao trigger.
 
-The Scheduler retry policy and Cloud Run task retry policy solve different failures:
+A política de retry do Scheduler e a política de task retry do Cloud Run resolvem falhas diferentes:
 
-- Scheduler retry handles failure to submit/start an execution request;
-- Cloud Run `max_retries` handles a task that started but exited unsuccessfully.
+- retry do Scheduler trata falha ao submeter/iniciar request de execução;
+- `max_retries` do Cloud Run trata task iniciada que terminou sem sucesso.
 
-Batch code should be designed for idempotency because either boundary can retry work after transient failures.
+Código batch deve ser idempotente porque qualquer limite pode repetir trabalho após falhas transitórias.
 
-## Identity model
+## Modelo de identidade
 
-Use separate identities for separate trust boundaries:
+Use identidades separadas para limites de confiança distintos:
 
 ```text
-Scheduler service account
-  -> roles/run.invoker on one Cloud Run Job
-  -> can submit job executions
+Service account do Scheduler
+  -> roles/run.invoker em um Cloud Run Job
+  -> pode submeter execuções do job
 
-Batch runtime service account
-  -> attached to Cloud Run task template
-  -> accesses only APIs/resources needed by the .NET batch workload
+Service account de runtime do batch
+  -> anexada ao task template do Cloud Run
+  -> acessa somente APIs/recursos necessários ao workload .NET batch
 ```
 
-Neither identity needs a long-lived key. Terraform does not create secret payloads or service-account keys.
+Nenhuma identidade precisa de chave de longa duração. Terraform não cria payloads de segredos nem chaves de service account.
 
-## Limits represented by the module
+## Limites representados pelo módulo
 
-The module validates relevant platform constraints before provider execution:
+O módulo valida constraints relevantes da plataforma antes da execução do provider:
 
 - `task_count`: 1–10000;
-- `parallelism`: positive integer, not greater than task count;
+- `parallelism`: inteiro positivo, não maior que task count;
 - `max_retries`: 0–10;
-- `task_timeout`: positive whole seconds, up to 604800 seconds (7 days);
-- CPU: 1, 2, or 4 whole vCPU under the module's current non-Gen2-specific contract;
-- compatible CPU/memory ranges;
-- reserved `CLOUD_RUN_` and `X_GOOGLE_` environment names are rejected.
+- `task_timeout`: segundos inteiros positivos, até 604800 segundos (7 dias);
+- CPU: 1, 2 ou 4 vCPU inteiros no contrato atual não específico de Gen2;
+- ranges compatíveis de CPU/memória;
+- nomes de ambiente reservados `CLOUD_RUN_` e `X_GOOGLE_` são rejeitados.
 
-Regional quotas may impose a lower practical parallelism ceiling than the configured task count.
+Quotas regionais podem impor teto prático de parallelism menor que o task count configurado.
 
-## Secret handling
+## Tratamento de segredos
 
-Secret values are not Terraform inputs. The module only accepts Secret Manager secret identifiers and versions. A later IAM/Secret Manager composition grants the runtime identity `secretAccessor` only on the secrets it needs.
+Valores de segredos não são inputs Terraform. O módulo aceita apenas identificadores e versões de segredos Secret Manager. Uma composição posterior de IAM/Secret Manager concede `secretAccessor` à identidade de runtime somente nos segredos necessários.
 
-## Validation
+## Validação
 
-The job module includes native plan-mode tests using a mocked Google provider, so CI validates defaults and invalid inputs without executing a job or authenticating to Google Cloud.
+O módulo de job inclui testes nativos em modo plan com provider Google mockado, permitindo ao CI validar defaults e inputs inválidos sem executar job nem autenticar no Google Cloud.
 
-The example root is initialized with its backend disabled and a committed provider lock file. No infrastructure is created during pull-request validation.
+O root de exemplo é inicializado com backend desabilitado e lock file de provider commitado. Nenhuma infraestrutura é criada durante validação de pull request.

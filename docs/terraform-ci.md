@@ -1,129 +1,130 @@
-# Terraform CI
+# CI do Terraform
 
-The repository validates Terraform changes in GitHub Actions before merge. The workflow is intentionally credential-free: static validation and unit tests do not authenticate to Google Cloud.
+O repositório valida mudanças Terraform no GitHub Actions antes do merge. O workflow é intencionalmente sem credenciais: validação estática e unit tests não autenticam no Google Cloud.
 
 ## Workflow
 
-`.github/workflows/terraform-ci.yml` runs for pull requests and pushes to `main` with read-only repository permissions.
+`.github/workflows/terraform-ci.yml` executa para pull requests e pushes na `main` com permissões read-only no repositório.
 
-The workflow contains five independent quality gates:
+O workflow contém cinco quality gates independentes:
 
-1. **Terraform format** — runs `terraform fmt -check -recursive -diff` and fails when committed HCL is not formatted.
-2. **Terraform validate** — discovers deployable roots under `bootstrap/`, `environments/`, and `examples/`, plus reusable child modules under `modules/`. Roots are initialized with `-backend=false`, require a committed `.terraform.lock.hcl`, and are validated with their locked providers. Reusable modules are initialized and validated independently without requiring a root lock file.
-3. **Terraform test** — discovers reusable modules that contain `tests/*.tftest.hcl`, initializes them without a backend, and runs `terraform test`. Unit tests should prefer plan mode and mocked providers so pull requests do not create infrastructure or require cloud credentials.
-4. **TFLint** — installs the version pinned in `.tflint-version`, initializes the repository configuration, and runs recursively with the Terraform recommended rules and the pinned Google Cloud ruleset from `.tflint.hcl`.
-5. **IaC security scan** — runs Trivy configuration scanning and fails on HIGH or CRITICAL findings.
+1. **Terraform format** — executa `terraform fmt -check -recursive -diff` e falha quando HCL commitado não está formatado.
+2. **Terraform validate** — descobre roots deployáveis em `bootstrap/`, `environments/` e `examples/`, além de módulos filhos em `modules/`. Roots são inicializados com `-backend=false`, exigem `.terraform.lock.hcl` commitado e são validados com providers travados. Módulos reutilizáveis são inicializados e validados independentemente sem exigir lock file próprio.
+3. **Terraform test** — descobre módulos reutilizáveis com `tests/*.tftest.hcl`, inicializa sem backend e executa `terraform test`. Unit tests devem preferir modo plan e providers mockados para que PRs não criem infraestrutura nem exijam credenciais cloud.
+4. **TFLint** — instala a versão em `.tflint-version`, inicializa a configuração do repositório e executa recursivamente regras recomendadas do Terraform e ruleset Google fixado em `.tflint.hcl`.
+5. **Scan de segurança IaC** — executa Trivy configuration scanning e falha em achados HIGH ou CRITICAL.
 
-Each gate is a separate job so failures are easy to identify in pull-request checks.
+Cada gate é um job separado para facilitar identificação de falhas nos checks do PR.
 
-## Terraform root and module discovery
+## Descoberta de roots e módulos Terraform
 
-Repository architecture defines deployable or independently initialized roots as direct child directories of:
+A arquitetura define roots deployáveis ou inicializáveis independentemente como diretórios filhos diretos de:
 
 - `bootstrap/`;
 - `environments/`;
 - `examples/`.
 
-Every root must commit `.terraform.lock.hcl`. Root validation uses `terraform init -backend=false -lockfile=readonly` so CI cannot silently update provider selections.
+Todo root deve commitar `.terraform.lock.hcl`. A validação usa `terraform init -backend=false -lockfile=readonly` para impedir que o CI atualize silenciosamente seleções de providers.
 
-Reusable child modules are discovered as direct child directories of `modules/` that contain Terraform files. They are validated independently even before an environment or example consumes them, which catches provider-schema errors, invalid references, and other semantic configuration failures early.
+Módulos filhos reutilizáveis são descobertos como diretórios filhos de `modules/` com arquivos Terraform. São validados independentemente mesmo antes de um ambiente ou exemplo consumi-los, detectando cedo erros de schema do provider, referências inválidas e outros problemas semânticos.
 
-Reusable modules do not own backends or root dependency lock files. CI therefore initializes them with `terraform init -backend=false` and runs `terraform validate` without imposing the root lock-file requirement.
+Módulos reutilizáveis não possuem backend nem dependency lock file de root. O CI os inicializa com `terraform init -backend=false` e executa `terraform validate` sem impor requisito de lock file.
 
-Modules with native Terraform tests under their `tests/` directory are also executed by the `Terraform test` job. The test job remains credential-free; tests that require live infrastructure must be placed in a separately controlled integration workflow rather than silently introduced into pull-request CI.
+Módulos com testes nativos em `tests/` também são executados pelo job `Terraform test`. O job permanece sem credenciais; testes que exigem infraestrutura real devem ficar em workflow de integração controlado separado, e não ser introduzidos silenciosamente no CI de PR.
 
-## Security and credentials
+## Segurança e credenciais
 
-The Terraform CI workflow uses only:
+O workflow de CI Terraform usa somente:
 
 ```yaml
 permissions:
   contents: read
 ```
 
-It does not request `id-token: write`, does not consume Google Cloud credentials, and does not use service-account keys. Google Cloud authentication is isolated in workflows that explicitly need it, such as the WIF smoke test.
+Ele não solicita `id-token: write`, não consome credenciais Google Cloud e não usa chaves de service account. Autenticação Google Cloud fica isolada em workflows que explicitamente precisam dela, como o smoke test WIF.
 
-Third-party GitHub Actions are pinned to immutable commit SHAs, with the corresponding release version documented as an inline comment in the workflow.
+GitHub Actions de terceiros são fixadas por SHAs imutáveis de commit, com versão de release correspondente documentada em comentário inline.
 
-## Dependency updates
+## Atualizações de dependências
 
-`.github/dependabot.yml` enables Dependabot version updates for GitHub Actions.
+`.github/dependabot.yml` habilita atualizações de versão para GitHub Actions **e dependências Terraform**. A política detalhada está em `docs/dependency-updates.md`.
 
-The configuration is intentionally conservative:
+A configuração é conservadora:
 
-- checks run weekly on Monday at 09:00 in `America/Sao_Paulo`;
-- minor and patch Action updates are grouped into a single pull request to reduce review noise;
-- major Action updates remain separate so breaking changes receive focused review;
-- no more than five Dependabot version-update pull requests may remain open at once;
-- Dependabot pull requests use the `chore(deps)` commit-message prefix;
-- Actions remain pinned to immutable commit SHAs, with release tags kept as same-line comments so Dependabot can update the SHA and its version annotation together.
+- checks executam semanalmente em `America/Sao_Paulo`;
+- updates minor e patch podem ser agrupados por ecossistema para reduzir ruído de PR;
+- updates major permanecem separados para revisão focada de breaking changes;
+- PRs do Dependabot passam pelos mesmos cinco gates offline e sem credenciais;
+- roots executáveis mantêm `.terraform.lock.hcl` determinístico e commitado;
+- módulos filhos reutilizáveis não precisam de lock file próprio.
 
-The Terraform Dependabot ecosystem is intentionally not enabled while this repository targets Terraform 1.16.x because GitHub currently documents Terraform ecosystem support only through Terraform 1.15.x. Provider updates therefore remain explicit changes reviewed through each root's `.terraform.lock.hcl` until official support catches up or the repository adopts another dependency-update mechanism.
+Atualizações automáticas são propostas de mudança, não evidência de segurança para merge. Mudanças major de provider/módulo exigem revisão explícita de schemas, defaults, APIs, permissões e efeitos sobre state.
 
-## Local validation
+## Validação local
 
-Before opening a pull request, run the applicable checks locally.
+Antes de abrir PR, execute os checks aplicáveis localmente.
 
-### Formatting
+### Formatação
 
 ```bash
 terraform fmt -check -recursive -diff
 ```
 
-### Root validation
+### Validação de root
 
-For each Terraform root, for example `bootstrap/state`:
+Para cada root Terraform, por exemplo `bootstrap/state`:
 
 ```bash
 terraform -chdir=bootstrap/state init -backend=false -input=false -lockfile=readonly
 terraform -chdir=bootstrap/state validate
 ```
 
-### Reusable module validation
+### Validação de módulo reutilizável
 
-For each reusable module, for example `modules/cloud-run-service`:
+Para cada módulo, por exemplo `modules/cloud-run-service`:
 
 ```bash
 terraform -chdir=modules/cloud-run-service init -backend=false -input=false
 terraform -chdir=modules/cloud-run-service validate
 ```
 
-Reusable modules intentionally do not require a committed `.terraform.lock.hcl`; provider selections are locked by the root modules that consume them.
+Módulos reutilizáveis intencionalmente não exigem `.terraform.lock.hcl` commitado; seleções de providers são travadas pelos root modules que os consomem.
 
-### Native Terraform tests
+### Testes nativos Terraform
 
-For a module containing `tests/*.tftest.hcl`:
+Para módulo com `tests/*.tftest.hcl`:
 
 ```bash
 terraform -chdir=modules/cloud-run-service init -backend=false -input=false
 terraform -chdir=modules/cloud-run-service test
 ```
 
-Pull-request unit tests should use `command = plan` and mock providers whenever the Google Cloud API is not part of the behavior being tested.
+Unit tests de pull request devem usar `command = plan` e mock providers sempre que a API Google Cloud não fizer parte do comportamento testado.
 
 ### TFLint
 
-Install the version from `.tflint-version`, then run:
+Instale a versão em `.tflint-version` e execute:
 
 ```bash
 tflint --init
 tflint --recursive --format compact
 ```
 
-### Security scanning
+### Scan de segurança
 
-The GitHub workflow uses Trivy configuration scanning with HIGH and CRITICAL findings configured as blocking. Developers may reproduce the same policy locally with a compatible Trivy installation:
+O workflow GitHub usa Trivy configuration scanning com achados HIGH/CRITICAL como bloqueantes. Desenvolvedores podem reproduzir a política localmente com versão compatível do Trivy:
 
 ```bash
 trivy config --severity HIGH,CRITICAL --exit-code 1 .
 ```
 
-## Tool version policy
+## Política de versões das ferramentas
 
-- Terraform CLI is pinned in `.terraform-version`.
-- TFLint is pinned in `.tflint-version`.
-- Terraform provider selections are pinned by each root's `.terraform.lock.hcl`.
-- TFLint plugins are pinned in `.tflint.hcl`.
-- GitHub Actions are pinned to immutable commit SHAs and monitored by Dependabot.
+- Terraform CLI é fixado em `.terraform-version`.
+- TFLint é fixado em `.tflint-version`.
+- Seleções de providers Terraform são fixadas por `.terraform.lock.hcl` em cada root.
+- Plugins TFLint são fixados em `.tflint.hcl`.
+- GitHub Actions são fixadas por SHAs imutáveis e monitoradas pelo Dependabot.
+- Dependabot monitora também providers/módulos Terraform conforme `docs/dependency-updates.md`.
 
-Version upgrades should be explicit repository changes so CI behavior does not drift without review.
+Upgrades de versão devem ser mudanças explícitas no repositório para que o comportamento do CI não sofra drift sem revisão.

@@ -1,109 +1,109 @@
-# Agent Implementation Workflow
+# Fluxo de implementação para agentes
 
-This document defines how coding agents should execute repository work. `AGENTS.md` remains the concise index; this file contains the operational detail.
+Este documento define como agentes de código devem executar trabalho no repositório. `AGENTS.md` permanece como índice conciso; este arquivo contém o detalhe operacional.
 
-## 1. Establish task context
+## 1. Estabelecer o contexto da tarefa
 
-Before editing:
+Antes de editar:
 
-1. Read the target issue completely.
-2. Identify explicit and implicit prerequisites.
-3. Read the architecture documentation and ADRs affected by the change.
-4. Inspect existing code instead of relying on issue text alone.
-5. Load only the project skills relevant to the task.
+1. Leia a issue alvo por completo.
+2. Identifique pré-requisitos explícitos e implícitos.
+3. Leia a documentação de arquitetura e ADRs afetadas pela mudança.
+4. Inspecione o código existente em vez de depender apenas do texto da issue.
+5. Carregue somente as skills do projeto relevantes para a tarefa.
 
-If the issue has a Definition of Ready, treat it as a gate. If a prerequisite issue has a Definition of Done, verify the relevant artifacts in the repository rather than assuming completion from issue state alone.
+Se a issue tiver Definition of Ready, trate-a como gate. Se uma issue pré-requisito tiver Definition of Done, verifique os artifacts relevantes no repositório em vez de presumir conclusão apenas pelo estado da issue.
 
-## 2. Plan around architectural boundaries
+## 2. Planejar respeitando limites arquiteturais
 
-Classify each change before writing code:
+Classifique cada mudança antes de escrever código:
 
-- **Bootstrap infrastructure**: prerequisites with a separate lifecycle, such as remote state.
-- **Reusable module**: a focused infrastructure capability with a typed interface.
-- **Environment root**: provider/backend configuration and composition of reusable modules.
-- **Delivery automation**: GitHub Actions, authentication, planning, validation, and deployment controls.
-- **Documentation/decision**: operator guidance or an architectural decision with trade-offs.
+- **Infraestrutura de bootstrap**: pré-requisitos com ciclo de vida separado, como state remoto.
+- **Módulo reutilizável**: capacidade de infraestrutura focada com interface tipada.
+- **Root de ambiente**: configuração de provider/backend e composição de módulos reutilizáveis.
+- **Automação de entrega**: GitHub Actions, autenticação, planning, validação e controles de deployment.
+- **Documentação/decisão**: orientação para operadores ou decisão arquitetural com trade-offs.
 
-If a requested implementation crosses several categories, keep each responsibility in its proper directory rather than collapsing them into a convenience module.
+Se uma implementação solicitada cruzar várias categorias, mantenha cada responsabilidade em seu diretório adequado, em vez de colapsá-las em um módulo de conveniência.
 
-## 3. Implement incrementally
+## 3. Implementar incrementalmente
 
-Prefer a sequence that keeps the branch reviewable:
+Prefira uma sequência que mantenha a branch revisável:
 
-1. version/provider constraints and interfaces;
-2. resource implementation;
-3. outputs and dependency contracts;
-4. tests;
-5. documentation;
-6. CI/security integration when in scope.
+1. constraints de versão/provider e interfaces;
+2. implementação de recursos;
+3. outputs e contratos de dependência;
+4. testes;
+5. documentação;
+6. integração com CI/segurança quando fizer parte do escopo.
 
-Do not add speculative abstractions for hypothetical future requirements. The repository is a reference architecture, so clarity and explicit trade-offs are more valuable than generic frameworks.
+Não adicione abstrações especulativas para requisitos futuros hipotéticos. O repositório é arquitetura de referência; clareza e trade-offs explícitos valem mais que frameworks genéricos.
 
-## 4. Terraform validation strategy
+## 4. Estratégia de validação Terraform
 
-Use the cheapest meaningful checks first.
+Use primeiro os checks significativos de menor custo.
 
-### Formatting
+### Formatação
 
 ```bash
 terraform fmt -check -recursive
 ```
 
-### Initialization and static validation
+### Inicialização e validação estática
 
-For a standalone root or example when a live backend is not needed:
+Para root ou exemplo independente quando backend real não for necessário:
 
 ```bash
 terraform init -backend=false
 terraform validate
 ```
 
-For reusable modules, initialize from the module directory when provider schemas are required for validation.
+Para módulos reutilizáveis, inicialize a partir do diretório do módulo quando schemas do provider forem necessários para validação.
 
-### Tests
+### Testes
 
-Prefer plan-mode native Terraform tests and mock providers for unit behavior. Use apply-mode integration tests only when provider behavior cannot be validated statically or with mocks.
+Prefira testes nativos Terraform em modo plan e mock providers para comportamento unitário. Use integration tests em modo apply somente quando comportamento do provider não puder ser validado estaticamente ou com mocks.
 
 ```bash
 terraform test
 ```
 
-Never create billable cloud resources merely to satisfy a routine unit-test requirement.
+Nunca crie recursos cloud com custo apenas para satisfazer um unit test rotineiro.
 
-### Lint and security
+### Lint e segurança
 
-Run repository-configured lint/security tooling when available. Findings should be fixed or explicitly justified. Do not suppress a rule solely to make CI green.
+Execute tooling de lint/segurança configurado no repositório quando disponível. Achados devem ser corrigidos ou explicitamente justificados. Não suprima regra apenas para deixar CI verde.
 
-## 5. Plan and apply safety
+## 5. Segurança de plan e apply
 
-A generated plan is review material, not authorization to deploy.
+Um plan gerado é material para revisão, não autorização para deployment.
 
-Agents may run `terraform plan` when credentials and a safe target environment are available and the task requires it. Agents must not run `terraform apply`, `terraform destroy`, destructive state commands, or live IAM mutations unless the user explicitly requested the live operation.
+Agentes podem executar `terraform plan` quando credenciais e ambiente seguro estiverem disponíveis e a tarefa exigir. Agentes não devem executar `terraform apply`, `terraform destroy`, comandos destrutivos de state ou mutações IAM reais a menos que o usuário tenha solicitado explicitamente a operação live.
 
-Never paste state content, credentials, access tokens, or secret payloads into chat output, logs, test fixtures, or committed files.
+Nunca cole conteúdo de state, credenciais, access tokens ou payloads de segredos em chat, logs, fixtures de teste ou arquivos commitados.
 
-## 6. Documentation and ADR rules
+## 6. Regras de documentação e ADR
 
-Update documentation when a change alters:
+Atualize documentação quando uma mudança alterar:
 
-- module interfaces or supported usage;
-- deployment/operator steps;
-- authentication or security assumptions;
-- state ownership;
-- runtime interaction between services;
-- environment responsibilities.
+- interfaces de módulos ou uso suportado;
+- passos de deployment/operação;
+- premissas de autenticação ou segurança;
+- ownership do state;
+- interação em runtime entre serviços;
+- responsabilidades dos ambientes.
 
-Create or update an ADR when the change represents a durable architectural decision with meaningful alternatives or consequences. Routine implementation details do not need an ADR.
+Crie ou atualize ADR quando a mudança representar decisão arquitetural durável com alternativas ou consequências relevantes. Detalhes rotineiros de implementação não exigem ADR.
 
-## 7. Pull request completion
+## 7. Conclusão do pull request
 
-Before opening or updating a PR:
+Antes de abrir ou atualizar PR:
 
-1. Review the diff for unrelated changes.
-2. Re-run practical validation checks after the final edit.
-3. Map the result explicitly to the issue DoD.
-4. Mention any validation that could not be executed and why.
-5. Describe security-sensitive behavior when relevant.
-6. Request review only after the branch is internally consistent.
+1. Revise o diff em busca de mudanças não relacionadas.
+2. Reexecute checks práticos de validação após a última edição.
+3. Mapeie explicitamente o resultado para o DoD da issue.
+4. Mencione qualquer validação que não pôde ser executada e o motivo.
+5. Descreva comportamento sensível à segurança quando relevante.
+6. Solicite review somente quando a branch estiver internamente consistente.
 
-A later prompt working on the same issue must re-check the earlier prompt's work before extending it. Separate chat sessions are not evidence that previous implementation is correct.
+Um prompt posterior trabalhando na mesma issue deve reverificar o trabalho do prompt anterior antes de estendê-lo. Sessões de chat separadas não são evidência de que a implementação anterior está correta.

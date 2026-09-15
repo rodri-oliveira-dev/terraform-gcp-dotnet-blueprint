@@ -1,121 +1,121 @@
-# Observability architecture
+# Arquitetura de observabilidade
 
-Issue #24 adds Google Cloud observability as a separate architectural capability rather than embedding alert resources inside workload modules.
+A issue #24 adiciona observabilidade Google Cloud como capacidade arquitetural separada, em vez de incorporar recursos de alerta dentro dos módulos de workload.
 
-## Boundary
+## Limite
 
-`modules/observability-alerts` consumes resource names from a root module and owns Cloud Monitoring alert policies only. `environments/dev` and `environments/prod` attach that capability to the resources they already own.
+`modules/observability-alerts` consome nomes de recursos fornecidos por um root module e é responsável apenas pelas políticas de alerta do Cloud Monitoring. `environments/dev` e `environments/prod` conectam essa capacidade aos recursos que já possuem.
 
-The module does not own:
+O módulo não é responsável por:
 
-- Cloud Run, Pub/Sub, Cloud Run Jobs, Redis, or their IAM;
-- notification channels or their destinations/secrets;
-- application logging libraries or OpenTelemetry SDK configuration;
-- log-based metrics;
-- workload-specific SLO targets.
+- Cloud Run, Pub/Sub, Cloud Run Jobs, Redis ou seus IAMs;
+- canais de notificação ou seus destinos/segredos;
+- bibliotecas de logging da aplicação ou configuração do SDK OpenTelemetry;
+- métricas baseadas em logs;
+- metas de SLO específicas de workload.
 
-Notification channels are injected as existing Cloud Monitoring resource names. E-mail addresses, Slack webhooks, PagerDuty integration keys, and other escalation destinations stay outside this repository and can be managed by an organization-owned Terraform state.
+Canais de notificação são injetados como nomes de recursos existentes do Cloud Monitoring. E-mails, Slack webhooks, chaves de integração PagerDuty e outros destinos de escalonamento ficam fora deste repositório e podem ser gerenciados por um state Terraform da organização.
 
-## Environment composition
+## Composição nos ambientes
 
-Both environment roots enable `monitoring.googleapis.com` as part of their shared API dependency set. Alert policies are created only after `enable_workloads = true`, because the policies target the API, worker, Pub/Sub subscription, batch job, and Redis instance that belong to that environment.
+Os dois roots de ambiente habilitam `monitoring.googleapis.com` em seu conjunto compartilhado de dependências de API. Políticas de alerta são criadas apenas depois de `enable_workloads = true`, pois têm como alvo API, worker, subscription Pub/Sub, batch job e instância Redis pertencentes ao ambiente.
 
-The environments deliberately use different operational thresholds:
+Os ambientes usam deliberadamente thresholds operacionais diferentes:
 
-| Signal | Development | Production |
+| Sinal | Desenvolvimento | Produção |
 | --- | ---: | ---: |
-| Cloud Run HTTP 5xx ratio | 10% | 5% |
-| Pub/Sub oldest unacked age | 600 s | 300 s |
-| Redis data-memory usage | 90% | 80% |
-| Redis system-memory usage | 90% | 80% |
+| Taxa HTTP 5xx do Cloud Run | 10% | 5% |
+| Idade da mensagem Pub/Sub não confirmada mais antiga | 600 s | 300 s |
+| Uso de memória de dados Redis | 90% | 80% |
+| Uso de memória de sistema Redis | 90% | 80% |
 
-Dead-letter forwarding, failed Cloud Run Job executions, and rejected Redis connections trigger on any observed event in both environments.
+Encaminhamento para dead-letter, execuções com falha de Cloud Run Jobs e conexões Redis rejeitadas disparam com qualquer evento observado nos dois ambientes.
 
-These values are blueprint operating defaults. They are not contractual SLOs and should be adjusted from observed traffic, capacity, incident history, and product requirements.
+Esses valores são padrões operacionais do blueprint. Não são SLOs contratuais e devem ser ajustados conforme tráfego observado, capacidade, histórico de incidentes e requisitos do produto.
 
-## Selected platform signals
+## Sinais de plataforma selecionados
 
-### Cloud Run services
+### Cloud Run Services
 
-The baseline availability signal is the ratio of HTTP 5xx responses to all requests using `run.googleapis.com/request_count` on the `cloud_run_revision` monitored resource. The policy aggregates across revisions of one named service before calculating the ratio so a rollout does not fragment the signal by revision.
+O sinal básico de disponibilidade é a taxa de respostas HTTP 5xx sobre todas as requests usando `run.googleapis.com/request_count` no monitored resource `cloud_run_revision`. A política agrega todas as revisions de um serviço antes de calcular a taxa, evitando fragmentar o sinal durante rollout.
 
 ### Pub/Sub
 
-Two different failure modes are monitored on the primary subscription:
+Dois modos de falha diferentes são monitorados na subscription principal:
 
-- `pubsub.googleapis.com/subscription/oldest_unacked_message_age` identifies a persistently stale backlog, which can indicate subscriber failure or insufficient processing throughput;
-- `pubsub.googleapis.com/subscription/dead_letter_message_count` reports messages Pub/Sub forwards to dead-letter handling after delivery attempts are exhausted.
+- `pubsub.googleapis.com/subscription/oldest_unacked_message_age` identifica backlog persistentemente antigo, que pode indicar falha do subscriber ou throughput insuficiente;
+- `pubsub.googleapis.com/subscription/dead_letter_message_count` reporta mensagens encaminhadas pelo Pub/Sub para dead-letter após esgotar tentativas de entrega.
 
-Using the direct dead-letter forwarding metric avoids depending on a specific backlog shape in the optional dead-letter inspection subscription.
+Usar a métrica direta de dead-letter evita depender de um formato específico de backlog na subscription opcional de inspeção da DLQ.
 
 ### Cloud Run Jobs
 
-`run.googleapis.com/job/completed_execution_count` is filtered to `result="failed"` for the configured job. A failed finite execution is treated as an event-oriented operational failure instead of averaging it away over a longer window.
+`run.googleapis.com/job/completed_execution_count` é filtrado por `result="failed"` para o job configurado. Uma execução finita com falha é tratada como falha operacional orientada a evento, em vez de ser diluída em média por janela longa.
 
 ### Memorystore for Redis
 
-The baseline cache signals are:
+Os sinais básicos de cache são:
 
-- `redis.googleapis.com/stats/memory/usage_ratio` for Redis data-memory pressure;
-- `redis.googleapis.com/stats/memory/system_memory_usage_ratio` for system-memory pressure;
-- `redis.googleapis.com/stats/reject_connections_count` for clients rejected by the instance.
+- `redis.googleapis.com/stats/memory/usage_ratio` para pressão de memória de dados Redis;
+- `redis.googleapis.com/stats/memory/system_memory_usage_ratio` para pressão de memória de sistema;
+- `redis.googleapis.com/stats/reject_connections_count` para clientes rejeitados pela instância.
 
-Redis is supporting infrastructure rather than the user-facing SLO itself. Redis alerts should inform diagnosis and capacity planning, while API or workflow SLIs describe customer impact.
+Redis é infraestrutura de suporte, não o SLO percebido pelo usuário. Alertas Redis ajudam diagnóstico e planejamento de capacidade; SLIs da API/workflow descrevem impacto ao cliente.
 
-## Structured logging expectations for .NET
+## Expectativas de logging estruturado para .NET
 
-Cloud Logging automatically receives stdout/stderr from Cloud Run. The application should therefore emit structured JSON rather than relying on unstructured multi-line text.
+Cloud Logging recebe automaticamente stdout/stderr do Cloud Run. A aplicação deve emitir JSON estruturado em vez de depender de texto multilinha não estruturado.
 
-Recommended fields include:
+Campos recomendados incluem:
 
-- a concise message plus mapped severity level;
-- stable application/component and environment identifiers;
-- trace/span identifiers when distributed tracing is enabled;
-- request or operation correlation identifiers;
-- event/category identifiers suitable for aggregation;
-- duration and outcome fields for important business operations;
-- exception type and stack trace for failures.
+- mensagem concisa e nível de severity mapeado;
+- identificadores estáveis de aplicação/componente e ambiente;
+- IDs de trace/span quando distributed tracing estiver habilitado;
+- IDs de correlação de request/operação;
+- identificadores de evento/categoria adequados à agregação;
+- campos de duração e resultado para operações de negócio importantes;
+- tipo de exception e stack trace em falhas.
 
-Do not log credentials, authorization headers, cookies, Secret Manager payloads, Redis AUTH strings, personal data that is not operationally necessary, or entire request bodies by default.
+Não registre credenciais, authorization headers, cookies, payloads do Secret Manager, Redis AUTH strings, dados pessoais que não sejam operacionalmente necessários ou request bodies completos por padrão.
 
-Application telemetry ownership stays outside Terraform. The .NET application may use `Microsoft.Extensions.Logging`, OpenTelemetry, or another supported logging/tracing stack, but this repository does not force a library choice. Terraform owns the cloud resources and platform alert policy; application code owns semantic events, traces, custom metrics, and redaction.
+Ownership da telemetria da aplicação fica fora do Terraform. A aplicação .NET pode usar `Microsoft.Extensions.Logging`, OpenTelemetry ou outra stack suportada, mas o repositório não impõe biblioteca. Terraform é responsável por recursos cloud e políticas de alerta de plataforma; o código da aplicação é responsável por eventos semânticos, traces, métricas customizadas e redaction.
 
-## SLI and SLO guidance
+## Orientação sobre SLI e SLO
 
-An SLI should describe behavior users or upstream systems experience, not simply the health of one infrastructure component.
+Um SLI deve descrever comportamento experimentado por usuários ou sistemas upstream, não apenas a saúde de um componente de infraestrutura.
 
-Reasonable starting points are:
+Pontos iniciais razoáveis:
 
-- **API availability:** successful eligible requests / total eligible requests;
-- **API latency:** proportion of eligible requests below a product-defined latency threshold;
-- **asynchronous freshness:** messages completed before a product-defined age target;
-- **batch reliability:** successful scheduled executions / expected executions in the measurement window.
+- **disponibilidade da API:** requests elegíveis bem-sucedidas / total de requests elegíveis;
+- **latência da API:** proporção de requests elegíveis abaixo de threshold definido pelo produto;
+- **freshness assíncrona:** mensagens concluídas antes de uma idade alvo definida pelo produto;
+- **confiabilidade do batch:** execuções agendadas bem-sucedidas / execuções esperadas na janela de medição.
 
-DLQ volume, Redis memory, CPU, instance counts, and rejected connections are valuable diagnostic or leading indicators, but they should not automatically be promoted to product SLOs.
+Volume de DLQ, memória Redis, CPU, quantidade de instâncias e conexões rejeitadas são indicadores diagnósticos ou leading indicators valiosos, mas não devem virar SLOs de produto automaticamente.
 
-Choose SLO targets from business requirements and observed baseline behavior. For an SLO expressed as a success percentage, the error budget for a window is `1 - SLO target`; for example, a 99.9% target permits 0.1% unsuccessful eligible events in that window. This repository intentionally does not prescribe 99.9%, 99.95%, or another universal target.
+Escolha metas de SLO a partir de requisitos de negócio e comportamento baseline observado. Para SLO expresso como percentual de sucesso, o error budget da janela é `1 - SLO target`; por exemplo, meta de 99,9% permite 0,1% de eventos elegíveis sem sucesso. O repositório não prescreve 99,9%, 99,95% ou outro alvo universal.
 
-Alert policies in this module are operational symptom/capacity alerts. Burn-rate alerting should be added only after a workload has a real SLO and a trustworthy SLI measurement source.
+As políticas deste módulo são alertas operacionais de sintoma/capacidade. Burn-rate alerting deve ser adicionado somente depois que o workload tiver SLO real e fonte confiável de medição do SLI.
 
-## Missing telemetry
+## Telemetria ausente
 
-The baseline metric conditions treat missing data as inactive. This is appropriate for services that can be intentionally idle and where absence of traffic is not automatically equivalent to an outage.
+As condições de métrica do baseline tratam dados ausentes como inativos. Isso é apropriado para serviços que podem ficar intencionalmente ociosos e onde ausência de tráfego não equivale automaticamente a outage.
 
-A workload that requires heartbeat or telemetry-absence detection should add that as an explicit environment policy rather than changing the meaning of the shared baseline alerts.
+Um workload que exige heartbeat ou detecção de ausência de telemetria deve adicionar isso como política explícita do ambiente, em vez de alterar o significado dos alertas compartilhados.
 
 ## Dashboards
 
-No custom dashboard is created by this issue. Cloud Run, Pub/Sub, Cloud Run Jobs, Memorystore, and Cloud Monitoring already expose service-native metric views, and a generic dashboard that simply repeats those charts would add maintenance without a clear incident-response workflow.
+Nenhum dashboard customizado é criado. Cloud Run, Pub/Sub, Cloud Run Jobs, Memorystore e Cloud Monitoring já expõem views de métricas nativas, e um dashboard genérico que apenas repita esses gráficos adicionaria manutenção sem workflow claro de resposta a incidentes.
 
-A custom dashboard becomes justified when operators can name a durable question it answers, such as correlating API error rate, Pub/Sub backlog age, and Redis pressure during one incident. Such a dashboard should be added with that operational purpose documented rather than as decorative coverage.
+Um dashboard customizado se justifica quando operadores conseguem nomear uma pergunta durável que ele responde, como correlacionar taxa de erro da API, idade do backlog Pub/Sub e pressão Redis durante um incidente. Esse dashboard deve ser adicionado com objetivo operacional documentado, e não como cobertura decorativa.
 
-## Operator workflow
+## Fluxo do operador
 
-1. Create notification channels in an organization-controlled process if notifications are required.
-2. Put only their Cloud Monitoring resource names in `observability_notification_channels`.
-3. Review the environment defaults in `observability_thresholds` and tune them when evidence supports a change.
-4. Complete the normal two-phase workload bootstrap.
-5. When `enable_workloads = true`, review the alert policies in the Terraform plan alongside the workload resources.
-6. Use `terraform output observability_alert_policy_ids` to locate the policies managed by the environment.
+1. Crie canais de notificação em processo controlado pela organização, quando necessários.
+2. Coloque apenas seus nomes de recursos Cloud Monitoring em `observability_notification_channels`.
+3. Revise os padrões do ambiente em `observability_thresholds` e ajuste-os quando houver evidência para mudança.
+4. Conclua o bootstrap normal dos workloads em duas fases.
+5. Quando `enable_workloads = true`, revise as políticas de alerta no plan Terraform junto aos recursos de workload.
+6. Use `terraform output observability_alert_policy_ids` para localizar as políticas gerenciadas pelo ambiente.
 
-Pull-request CI validates configuration without Google Cloud credentials and never applies alert policies.
+O CI de pull request valida a configuração sem credenciais Google Cloud e nunca aplica políticas de alerta.

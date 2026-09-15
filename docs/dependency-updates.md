@@ -1,40 +1,40 @@
-# Automated dependency updates
+# Atualizações automatizadas de dependências
 
-This repository uses Dependabot as a preventive supply-chain control alongside the existing Terraform CI and IaC security gates.
+Este repositório usa Dependabot como controle preventivo de supply chain junto ao CI Terraform e aos gates de segurança IaC existentes.
 
-## Covered ecosystems
+## Ecossistemas cobertos
 
-The versioned configuration in `.github/dependabot.yml` covers:
+A configuração versionada em `.github/dependabot.yml` cobre:
 
-- GitHub Actions from the repository root;
-- Terraform dependencies across bootstrap roots, environment roots, examples, and reusable modules.
+- GitHub Actions a partir da raiz do repositório;
+- dependências Terraform em roots de bootstrap, roots de ambiente, exemplos e módulos reutilizáveis.
 
-Terraform directories are expressed with directory patterns so new roots/modules that follow the repository structure inherit the maintenance policy without duplicating configuration.
+Diretórios Terraform são expressos com padrões de diretório para que novos roots/módulos que sigam a estrutura do repositório herdem a política de manutenção sem duplicar configuração.
 
-## Update policy
+## Política de atualização
 
-Dependency checks run weekly in `America/Sao_Paulo`. Minor and patch updates may be grouped per ecosystem to reduce PR noise. Major updates remain separate because provider/module majors can change schemas, defaults, APIs, required permissions, or state behavior and therefore require explicit review.
+Verificações de dependências executam semanalmente em `America/Sao_Paulo`. Atualizações minor e patch podem ser agrupadas por ecossistema para reduzir ruído de PR. Atualizações major permanecem separadas porque majors de provider/módulo podem alterar schemas, defaults, APIs, permissões exigidas ou comportamento do state e, portanto, exigem revisão explícita.
 
-An automated update PR is a proposal, not evidence that the version is safe to merge.
+Um PR automatizado de atualização é uma proposta, não evidência de que a versão é segura para merge.
 
-## Terraform lock files
+## Lock files do Terraform
 
-Executable roots under `bootstrap/`, `environments/`, and `examples/` commit `.terraform.lock.hcl` where required by the repository CI. Provider updates affecting those roots must keep the lock file consistent with the declared constraints.
+Roots executáveis em `bootstrap/`, `environments/` e `examples/` commitam `.terraform.lock.hcl` quando exigido pelo CI do repositório. Updates de provider que afetam esses roots devem manter o lock file consistente com as constraints declaradas.
 
-Reusable child modules do not need to commit their own dependency lock files. They are validated through module initialization/tests and through the roots that consume them.
+Módulos filhos reutilizáveis não precisam commitar dependency lock file próprio. Eles são validados por inicialização/testes do módulo e pelos roots que os consomem.
 
-## Required validation
+## Validação obrigatória
 
-Dependabot Terraform PRs must pass the same credential-free pull-request gates as manual changes:
+PRs Terraform do Dependabot devem passar pelos mesmos gates sem credenciais que mudanças manuais:
 
 - `terraform fmt -check`;
-- `terraform init -backend=false` and `terraform validate`;
-- `terraform test` for reusable modules that provide tests;
+- `terraform init -backend=false` e `terraform validate`;
+- `terraform test` para módulos reutilizáveis que fornecem testes;
 - TFLint;
-- Trivy configuration scanning with the existing HIGH/CRITICAL blocking policy.
+- Trivy configuration scanning com a política bloqueante HIGH/CRITICAL existente.
 
-No `terraform apply` or `terraform destroy` is part of dependency-update validation. GCP credentials must not be introduced merely to validate provider/module version changes that can be checked offline.
+Nenhum `terraform apply` ou `terraform destroy` faz parte da validação de atualização de dependência. Credenciais GCP não devem ser introduzidas apenas para validar versões de provider/módulo que podem ser verificadas offline.
 
-## Scope boundary
+## Limite de escopo
 
-CodeQL is not used to analyze HCL. Terraform validation, tests, TFLint, Trivy, provider lock files, and review of provider/module release notes remain the relevant controls for infrastructure code in this repository.
+CodeQL não é usado para analisar HCL. Validação Terraform, testes, TFLint, Trivy, provider lock files e revisão das release notes de providers/módulos continuam sendo os controles relevantes para infraestrutura neste repositório.

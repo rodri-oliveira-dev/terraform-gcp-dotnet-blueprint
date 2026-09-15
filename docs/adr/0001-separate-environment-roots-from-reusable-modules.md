@@ -1,47 +1,47 @@
-# ADR 0001: Separate environment roots from reusable modules
+# ADR 0001: Separar roots de ambiente de módulos reutilizáveis
 
-- Status: Accepted
-- Date: 2026-09-14
+- Status: Aceita
+- Data: 2026-09-14
 
-## Context
+## Contexto
 
-The repository must demonstrate reusable Terraform design without coupling infrastructure modules to a specific environment. At the same time, development and production require different sizing, policy, backend and operational configuration.
+O repositório precisa demonstrar design Terraform reutilizável sem acoplar módulos de infraestrutura a um ambiente específico. Ao mesmo tempo, desenvolvimento e produção exigem sizing, políticas, backend e configuração operacional diferentes.
 
-Keeping all resources in one Terraform root would make the reference implementation easier to start but would quickly mix reusable infrastructure behavior with environment-specific decisions.
+Manter todos os recursos em um único Terraform root facilitaria o início da implementação de referência, mas rapidamente misturaria comportamento reutilizável da infraestrutura com decisões específicas de ambiente.
 
-## Decision
+## Decisão
 
-The repository will use two distinct layers:
+O repositório usará duas camadas distintas:
 
-- `modules/` for reusable child modules;
-- `environments/<environment>/` for Terraform root modules that compose those child modules.
+- `modules/` para módulos filhos reutilizáveis;
+- `environments/<environment>/` para root modules Terraform que compõem esses módulos filhos.
 
-Infrastructure required before regular roots can operate, such as the remote-state bucket, will live under `bootstrap/` and have an independent lifecycle.
+Infraestrutura necessária antes dos roots normais, como bucket de state remoto, ficará em `bootstrap/` com ciclo de vida independente.
 
-Reusable modules must not configure providers or backends internally. Provider and backend configuration belong to Terraform roots.
+Módulos reutilizáveis não devem configurar providers ou backends internamente. Configuração de provider e backend pertence aos roots Terraform.
 
-## Consequences
+## Consequências
 
-### Positive
+### Positivas
 
-- Modules remain portable across environments.
-- Environment-specific decisions are explicit and reviewable.
-- Provider and backend configuration are centralized in root modules.
-- Development and production can evolve independently without duplicating module implementation.
-- The repository communicates a clear separation between capability implementation and environment composition.
+- Módulos permanecem portáveis entre ambientes.
+- Decisões específicas de ambiente ficam explícitas e revisáveis.
+- Configuração de provider/backend fica centralizada nos root modules.
+- Desenvolvimento e produção podem evoluir independentemente sem duplicar implementação de módulos.
+- O repositório comunica separação clara entre implementação de capacidade e composição de ambiente.
 
 ### Trade-offs
 
-- The repository contains more directories and Terraform roots.
-- Dependency and version management must be kept consistent across roots.
-- CI must discover and validate multiple Terraform roots instead of assuming a single root directory.
+- O repositório contém mais diretórios e Terraform roots.
+- Gerenciamento de dependências e versões precisa permanecer consistente entre roots.
+- CI deve descobrir e validar múltiplos Terraform roots em vez de presumir um único diretório root.
 
-## Alternatives considered
+## Alternativas consideradas
 
-### Single root module with workspaces
+### Root module único com workspaces
 
-Rejected as the primary structure because Terraform workspaces alone do not create sufficiently explicit configuration boundaries for a reference architecture intended to demonstrate environment-specific composition.
+Rejeitado como estrutura principal porque Terraform workspaces sozinhos não criam limites de configuração suficientemente explícitos para arquitetura de referência destinada a demonstrar composição específica por ambiente.
 
-### Duplicate Terraform per environment
+### Terraform duplicado por ambiente
 
-Rejected because it would encourage copy-and-paste infrastructure and increase configuration drift.
+Rejeitado porque incentivaria infraestrutura copy-and-paste e aumentaria configuration drift.

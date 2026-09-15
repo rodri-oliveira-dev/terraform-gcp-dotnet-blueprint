@@ -1,21 +1,21 @@
 # Memorystore for Redis
 
-## Purpose
+## Propósito
 
-The reference architecture uses Memorystore for Redis as a private managed cache reachable from Cloud Run workloads through Direct VPC egress.
+A arquitetura de referência usa Memorystore for Redis como cache gerenciado privado acessível por workloads Cloud Run via Direct VPC egress.
 
-Redis is intentionally modeled as its own capability. The Redis module consumes an existing VPC and assumes Private Service Access already exists; it does not own networking, Cloud Run, identities, or application secrets.
+Redis é intencionalmente modelado como capacidade própria. O módulo Redis consome uma VPC existente e assume que Private Service Access já existe; ele não é responsável por rede, Cloud Run, identidades ou segredos da aplicação.
 
-## Network path
+## Caminho de rede
 
-The intended path is:
+O caminho pretendido é:
 
 ```text
 Cloud Run Service / Job
         |
         | Direct VPC egress
         v
-Workload subnet / VPC
+Subnet de workloads / VPC
         |
         +------------------------------+
         |                              |
@@ -26,93 +26,93 @@ Private Google APIs             Service Networking peering
                               Memorystore for Redis
 ```
 
-`modules/vpc-network` creates the custom-mode VPC, workload subnet, allocated Private Service Access range, and the connection to `servicenetworking.googleapis.com`.
+`modules/vpc-network` cria VPC em modo customizado, subnet de workloads, range alocado de Private Service Access e a conexão com `servicenetworking.googleapis.com`.
 
-`modules/memorystore-redis` receives only the fully qualified VPC network ID and fixes `connect_mode` to `PRIVATE_SERVICE_ACCESS`. The composition root must also ensure that the Service Networking connection is established before the Redis instance. In the isolated example this is represented with `depends_on = [module.network]`.
+`modules/memorystore-redis` recebe somente o ID completo da VPC e fixa `connect_mode` em `PRIVATE_SERVICE_ACCESS`. O root de composição também deve garantir que a conexão Service Networking esteja estabelecida antes da instância Redis. No exemplo isolado isso é representado por `depends_on = [module.network]`.
 
-Google Cloud recommends Private Service Access over direct peering for Memorystore for Redis. The module therefore does not expose `DIRECT_PEERING` as a supported mode.
+O Google Cloud recomenda Private Service Access em vez de direct peering para Memorystore for Redis. O módulo, portanto, não expõe `DIRECT_PEERING` como modo suportado.
 
-## Security defaults
+## Padrões de segurança
 
-The module defaults to:
+O módulo usa por padrão:
 
-- `STANDARD_HA` tier;
+- tier `STANDARD_HA`;
 - Redis 7.2;
-- Redis AUTH enabled;
-- TLS in-transit encryption with `SERVER_AUTHENTICATION`;
-- explicit authorized VPC network;
-- provider-level deletion prevention.
+- Redis AUTH habilitado;
+- criptografia TLS em trânsito com `SERVER_AUTHENTICATION`;
+- VPC autorizada explícita;
+- prevenção de exclusão no provider.
 
-These defaults are production-oriented rather than cost-minimal. A caller may explicitly choose `BASIC`, but AUTH and TLS remain enabled unless the caller independently opts out of them.
+Esses padrões são orientados a produção, e não ao menor custo. Um caller pode escolher `BASIC` explicitamente, mas AUTH e TLS permanecem habilitados a menos que sejam desabilitados de forma independente.
 
-## Redis AUTH boundary
+## Limite do Redis AUTH
 
-When AUTH is enabled, Memorystore generates the AUTH string. The Terraform provider exposes that string as a computed sensitive attribute.
+Quando AUTH está habilitado, o Memorystore gera a AUTH string. O provider Terraform expõe essa string como atributo calculado sensível.
 
-The module does not return the AUTH string through an output and does not write it into a Secret Manager version. This preserves the repository rule that secret payload lifecycle is managed outside Terraform configuration.
+O módulo não retorna a AUTH string por output nem a grava em uma versão do Secret Manager. Isso preserva a regra do repositório de que o ciclo de vida de payloads de segredos é gerenciado fora da configuração Terraform.
 
-A trusted operator or delivery process should retrieve the AUTH string with the narrowly scoped Google Cloud permission required for that operation and place it into the application's secret-delivery mechanism. Rotation should be treated as an operational procedure because toggling Redis AUTH generates a new value.
+Um operador ou processo de entrega confiável deve recuperar a AUTH string usando a permissão Google Cloud de escopo mínimo necessária e colocá-la no mecanismo de entrega de segredos da aplicação. Rotação deve ser tratada como procedimento operacional porque alternar Redis AUTH gera novo valor.
 
-Terraform state remains sensitive: provider-computed values can be persisted there even when they are not declared as outputs. The GCS remote-state controls from `bootstrap/state` therefore remain part of the Redis security boundary.
+O state Terraform continua sensível: valores calculados pelo provider podem persistir nele mesmo sem serem outputs. Os controles de state remoto GCS em `bootstrap/state` continuam, portanto, parte do limite de segurança do Redis.
 
-## TLS boundary
+## Limite de TLS
 
-`SERVER_AUTHENTICATION` encrypts Redis client/server traffic. Memorystore supports TLS 1.2 or later for this feature.
+`SERVER_AUTHENTICATION` criptografa o tráfego cliente/servidor Redis. Memorystore suporta TLS 1.2 ou superior para esse recurso.
 
-A TLS-enabled client must:
+Um cliente com TLS deve:
 
-1. connect to the provider-reported Redis host and secure port;
-2. authenticate when AUTH is enabled;
-3. trust the server CA exposed by Memorystore;
-4. handle certificate rotation and transient reconnects.
+1. conectar no host e secure port reportados pelo provider;
+2. autenticar quando AUTH estiver habilitado;
+3. confiar na server CA exposta pelo Memorystore;
+4. lidar com rotação de certificado e reconexões transitórias.
 
-The module deliberately does not emit CA certificate payloads. CA retrieval and installation belong to application/runtime delivery rather than the infrastructure module interface.
+O módulo deliberadamente não emite payloads do certificado CA. Recuperação e instalação da CA pertencem à entrega da aplicação/runtime, não à interface do módulo de infraestrutura.
 
-## Availability and sizing
+## Disponibilidade e sizing
 
-`STANDARD_HA` is the default tier because it provides primary/replica high availability across zones. Callers may optionally provide distinct `location_id` and `alternative_location_id` values; otherwise Google Cloud chooses zones.
+`STANDARD_HA` é o tier padrão porque fornece alta disponibilidade primary/replica entre zonas. Callers podem fornecer `location_id` e `alternative_location_id` distintos; caso contrário, o Google Cloud escolhe as zonas.
 
-`BASIC` remains useful for development or explicitly disposable environments. The module rejects `alternative_location_id` with the BASIC tier because that field has meaning only for `STANDARD_HA`.
+`BASIC` permanece útil para desenvolvimento ou ambientes explicitamente descartáveis. O módulo rejeita `alternative_location_id` com tier BASIC porque esse campo só tem significado para `STANDARD_HA`.
 
-Memory is configurable from 1 through 300 GiB. Capacity selection remains an environment-level decision.
+A memória é configurável entre 1 e 300 GiB. A escolha de capacidade permanece uma decisão do ambiente.
 
-## Redis version contract
+## Contrato de versão do Redis
 
-The module intentionally limits the public contract to:
+O módulo limita intencionalmente o contrato público a:
 
 - `REDIS_6_X`;
 - `REDIS_7_0`;
 - `REDIS_7_2`.
 
-Older Redis versions supported by the underlying API are excluded from this reference module so new environments do not adopt legacy versions accidentally. Redis 7.2 is the default.
+Versões mais antigas suportadas pela API subjacente são excluídas para evitar que novos ambientes adotem versões legadas acidentalmente. Redis 7.2 é o padrão.
 
-## Lifecycle
+## Ciclo de vida
 
-The Redis resource defaults to `deletion_policy = "PREVENT"`. A caller must make a deliberate code change to `DELETE` before Terraform can destroy the instance.
+O recurso Redis usa `deletion_policy = "PREVENT"` por padrão. Um caller deve fazer mudança deliberada para `DELETE` antes que Terraform possa destruir a instância.
 
-In-transit encryption is a creation-time security property in Memorystore and cannot simply be disabled later on an instance created with TLS enabled. Treat changes to transport security as lifecycle-sensitive changes and review the plan before apply.
+Criptografia em trânsito é propriedade de segurança definida na criação do Memorystore e não pode simplesmente ser desabilitada depois em uma instância criada com TLS. Trate mudanças de segurança de transporte como sensíveis ao ciclo de vida e revise o plan antes do apply.
 
-## API prerequisites
+## Pré-requisitos de API
 
-Roots consuming the complete network/cache capability need:
+Roots que consomem a capacidade completa de rede/cache precisam de:
 
 - `compute.googleapis.com`;
 - `servicenetworking.googleapis.com`;
 - `redis.googleapis.com`.
 
-These project-wide APIs are not enabled by the child modules because API lifecycle is a root/project concern.
+Essas APIs no nível do projeto não são habilitadas pelos módulos filhos porque o ciclo de vida de APIs é responsabilidade do root/projeto.
 
-## Deliberate exclusions
+## Exclusões deliberadas
 
-This implementation does not add:
+Esta implementação não adiciona:
 
-- Memorystore for Redis Cluster or Valkey;
-- IAM authentication for Redis Cluster;
-- read-replica scaling;
-- Redis persistence configuration;
-- CMEK configuration;
-- AUTH string replication into Secret Manager;
-- firewall/NAT resources;
-- application-specific client setup.
+- Memorystore for Redis Cluster ou Valkey;
+- autenticação IAM para Redis Cluster;
+- scaling de read replicas;
+- configuração de persistência Redis;
+- configuração CMEK;
+- replicação da AUTH string para Secret Manager;
+- recursos de firewall/NAT;
+- configuração de cliente específica da aplicação.
 
-Those should be introduced only when a concrete requirement justifies the additional lifecycle and operational complexity.
+Esses itens devem ser introduzidos somente quando um requisito concreto justificar a complexidade adicional de ciclo de vida e operação.
