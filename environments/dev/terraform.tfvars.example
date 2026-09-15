@@ -1,0 +1,23 @@
+project_id = "replace-with-your-project-id"
+region     = "us-central1"
+
+application_name = "blueprint"
+
+# Use immutable image digests or reviewed tags in real deployments.
+api_image    = "us-docker.pkg.dev/PROJECT/containers/api:dev"
+worker_image = "us-docker.pkg.dev/PROJECT/containers/worker:dev"
+batch_image  = "us-docker.pkg.dev/PROJECT/containers/batch:dev"
+
+# Phase 1: keep false while the network/cache/identities/secret metadata are
+# created and the required Secret Manager versions are populated externally.
+enable_workloads = false
+
+subnet_ip_cidr_range        = "10.40.0.0/24"
+private_service_access_cidr = "10.50.0.0/16"
+
+scheduler_schedule  = "0 2 * * *"
+scheduler_time_zone = "America/Sao_Paulo"
+
+labels = {
+  owner = "platform"
+}
