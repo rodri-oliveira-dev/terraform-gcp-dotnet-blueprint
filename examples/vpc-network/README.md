@@ -1,27 +1,27 @@
-# VPC network example
+# Exemplo de rede VPC
 
-This isolated root demonstrates the networking foundation introduced by issue #19.
+Este root isolado demonstra a fundação de rede introduzida pela issue #19.
 
-It creates:
+Ele cria:
 
-- one custom-mode VPC network;
-- one regional IPv4 workload subnet;
-- Private Google Access on that subnet;
-- one explicitly allocated Private Service Access range;
-- one Service Networking connection to `servicenetworking.googleapis.com`.
+- uma VPC em modo customizado;
+- uma subnet IPv4 regional de workloads;
+- Private Google Access nessa subnet;
+- um range explicitamente alocado de Private Service Access;
+- uma conexão Service Networking com `servicenetworking.googleapis.com`.
 
-It does **not** create Cloud Run workloads, Serverless VPC Access connectors, Redis, firewall rules, Cloud NAT, or Cloud Router.
+Ele **não** cria workloads Cloud Run, Serverless VPC Access connectors, Redis, firewall rules, Cloud NAT ou Cloud Router.
 
-## Prerequisites
+## Pré-requisitos
 
-Before planning or applying this example, the target project must have these APIs enabled:
+Antes de planejar ou aplicar, o projeto alvo deve ter estas APIs habilitadas:
 
 - `compute.googleapis.com`;
 - `servicenetworking.googleapis.com`.
 
-The deployment identity also needs permissions to create VPC/subnet/global-address resources and manage the private service networking connection.
+A identidade de deployment também precisa de permissões para criar recursos VPC/subnet/global-address e gerenciar a conexão private service networking.
 
-## Validate without creating infrastructure
+## Validar sem criar infraestrutura
 
 ```bash
 terraform init -backend=false -input=false -lockfile=readonly
@@ -29,22 +29,22 @@ terraform validate
 terraform plan -input=false -var='project_id=my-project'
 ```
 
-The example intentionally has no backend because it is not a production environment root.
+O exemplo não possui backend porque não é root de ambiente de produção.
 
-## Address plan
+## Plano de endereçamento
 
-The example uses:
+O exemplo usa:
 
 ```text
-Workload subnet:        10.20.0.0/24
-Private Service Access: 10.30.0.0/16
+Subnet de workloads:     10.20.0.0/24
+Private Service Access:  10.30.0.0/16
 ```
 
-These ranges are examples only. Real environment roots must coordinate CIDRs with existing VPCs, peering, VPN/Interconnect routes, Shared VPC policy, and other allocated ranges.
+Esses ranges são apenas exemplos. Roots reais devem coordenar CIDRs com VPCs existentes, peering, rotas VPN/Interconnect, política Shared VPC e outros ranges alocados.
 
-## Direct VPC workload contract
+## Contrato Direct VPC para workloads
 
-The root exposes `output.direct_vpc`, which can be passed directly to either Cloud Run module:
+O root expõe `output.direct_vpc`, que pode ser passado diretamente a qualquer módulo Cloud Run:
 
 ```hcl
 module "api" {
@@ -62,7 +62,7 @@ module "batch" {
 }
 ```
 
-The output supplies the network and subnetwork names. The workload modules default Direct VPC egress to `PRIVATE_RANGES_ONLY` and no network tags. A caller that intentionally routes all outbound traffic through the VPC can extend the object explicitly:
+O output fornece nomes da network e subnetwork. Os módulos usam Direct VPC egress `PRIVATE_RANGES_ONLY` e nenhuma network tag por padrão. Um caller que intencionalmente roteia todo tráfego de saída pela VPC pode estender o objeto:
 
 ```hcl
 direct_vpc = merge(module.network.direct_vpc, {
@@ -71,10 +71,10 @@ direct_vpc = merge(module.network.direct_vpc, {
 })
 ```
 
-`ALL_TRAFFIC` may require Cloud NAT or another routed internet-egress design; this example does not create that infrastructure.
+`ALL_TRAFFIC` pode exigir Cloud NAT ou outro desenho de internet-egress; este exemplo não cria essa infraestrutura.
 
-## Lifecycle warning
+## Aviso de ciclo de vida
 
-The Service Networking connection defaults to `deletion_policy = "PREVENT"`. This avoids accidental removal of a private-services connection that may later be used by Memorystore or another producer service.
+A conexão Service Networking usa `deletion_policy = "PREVENT"` por padrão. Isso evita remoção acidental de conexão de serviços privados que pode posteriormente ser usada por Memorystore ou outro producer service.
 
-Applying this example creates real Google Cloud networking resources. Agents and CI must not run `terraform apply` or `terraform destroy` unless explicitly authorized.
+Aplicar este exemplo cria recursos reais de rede no Google Cloud. Agentes e CI não devem executar `terraform apply` ou `terraform destroy` sem autorização explícita.

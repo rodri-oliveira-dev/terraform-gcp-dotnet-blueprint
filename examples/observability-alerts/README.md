@@ -1,23 +1,23 @@
-# Observability alerts example
+# Exemplo de alertas de observabilidade
 
-This root demonstrates isolated consumption of `modules/observability-alerts`. It assumes the named Cloud Run services, Cloud Run Job, Pub/Sub subscription, Redis instance, and any notification channels already exist in the selected project.
+Este root demonstra o consumo isolado de `modules/observability-alerts`. Ele pressupõe que Cloud Run Services, Cloud Run Job, subscription Pub/Sub, instância Redis e canais de notificação informados já existam no projeto selecionado.
 
-The example creates alert policies only. It does not create monitored workloads or notification destinations.
+O exemplo cria somente políticas de alerta. Não cria workloads monitorados nem destinos de notificação.
 
-## Validate without credentials
+## Validar sem credenciais
 
 ```bash
 terraform init -backend=false
 terraform validate
 ```
 
-Pull-request CI validates this root with the committed provider lock file and does not run `terraform apply`.
+O CI de pull request valida este root com o provider lock file commitado e não executa `terraform apply`.
 
-## Apply intentionally
+## Aplicar intencionalmente
 
-If you choose to apply this example in a real project, first enable the Cloud Monitoring API and replace the example resource names in `main.tf` with resources that actually emit the corresponding metrics. An alert policy can be created before a target has emitted data, but it will not evaluate meaningfully until matching time series exist.
+Se optar por aplicar este exemplo em projeto real, habilite primeiro a Cloud Monitoring API e substitua os nomes de recursos em `main.tf` por recursos que realmente emitam as métricas correspondentes. Uma política pode ser criada antes de um target emitir dados, mas não será avaliada de forma significativa até existirem séries temporais correspondentes.
 
-Notification channels are optional and must be created/owned elsewhere. Supply only channel resource names such as:
+Canais de notificação são opcionais e devem ser criados/gerenciados em outro lugar. Forneça somente nomes de recursos, por exemplo:
 
 ```hcl
 notification_channels = [
@@ -25,4 +25,4 @@ notification_channels = [
 ]
 ```
 
-Do not place notification tokens, webhook secrets, or credentials in Terraform variables for this module.
+Não coloque notification tokens, webhook secrets ou credenciais em variáveis Terraform deste módulo.
