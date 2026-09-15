@@ -101,6 +101,23 @@ resource "google_pubsub_subscription" "primary" {
     precondition {
       condition = (
         !var.dead_letter.enabled ||
+        length(local.dead_letter_topic_name) <= 255
+      )
+      error_message = "The dead-letter topic name must not exceed 255 characters; provide dead_letter.topic_name explicitly when the generated name would overflow."
+    }
+
+    precondition {
+      condition = (
+        !var.dead_letter.enabled ||
+        !var.dead_letter.create_inspection_subscription ||
+        length(local.dead_letter_subscription_name) <= 255
+      )
+      error_message = "The dead-letter inspection subscription name must not exceed 255 characters; provide dead_letter.subscription_name explicitly when the generated name would overflow."
+    }
+
+    precondition {
+      condition = (
+        !var.dead_letter.enabled ||
         local.dead_letter_topic_name != var.topic_name
       )
       error_message = "The dead-letter topic must be different from the primary topic."
