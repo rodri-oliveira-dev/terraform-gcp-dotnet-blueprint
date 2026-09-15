@@ -82,16 +82,20 @@ variable "enable_message_ordering" {
 
 variable "filter" {
   type        = string
-  description = "Optional Pub/Sub subscription filter."
+  description = "Optional Pub/Sub subscription filter. This module accepts printable ASCII only so the 256-character check is also a 256-byte check."
   default     = null
   nullable    = true
 
   validation {
     condition = (
       var.filter == null ||
-      (trimspace(var.filter) != "" && length(var.filter) <= 256)
+      (
+        trimspace(var.filter) != "" &&
+        length(var.filter) <= 256 &&
+        can(regex("^[ -~]+$", var.filter))
+      )
     )
-    error_message = "filter must be null or a non-empty expression of at most 256 bytes/characters for this module's conservative validation."
+    error_message = "filter must be null or a non-empty printable-ASCII expression of at most 256 bytes."
   }
 }
 
