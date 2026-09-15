@@ -33,11 +33,27 @@ run "reject_non_service_account_accessor" {
   command = plan
 
   variables {
-    accessor_service_account_emails = ["user@example.com"]
+    accessor_service_accounts = {
+      api_runtime = "user@example.com"
+    }
   }
 
   expect_failures = [
-    var.accessor_service_account_emails,
+    var.accessor_service_accounts,
+  ]
+}
+
+run "reject_empty_accessor_key" {
+  command = plan
+
+  variables {
+    accessor_service_accounts = {
+      "" = "orders-api@example-project.iam.gserviceaccount.com"
+    }
+  }
+
+  expect_failures = [
+    var.accessor_service_accounts,
   ]
 }
 
