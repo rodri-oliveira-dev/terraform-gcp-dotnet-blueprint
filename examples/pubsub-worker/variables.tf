@@ -46,8 +46,9 @@ variable "push_service_account" {
   validation {
     condition = (
       endswith(var.push_service_account, ".iam.gserviceaccount.com") &&
-      endswith(var.push_service_account, "@${var.project_id}.iam.gserviceaccount.com")
+      endswith(var.push_service_account, "@${var.project_id}.iam.gserviceaccount.com") &&
+      var.push_service_account != var.worker_runtime_service_account
     )
-    error_message = "push_service_account must be a Google service account in project_id."
+    error_message = "push_service_account must be a Google service account in project_id and must be different from worker_runtime_service_account so transport and runtime identities remain independently scoped."
   }
 }
