@@ -4,12 +4,12 @@
 
 The reference architecture uses a dedicated custom-mode VPC as the shared private-network boundary for Cloud Run workloads and managed services. Networking is intentionally modeled separately from workload compute, secrets, messaging, and cache resources so roots can compose those capabilities explicitly.
 
-Issue #19 is split into two parts:
+Issue #19 is implemented in two parts:
 
 1. **Part 1:** VPC, workload subnet, allocated Private Service Access range, and Service Networking connection.
 2. **Part 2:** optional Direct VPC egress for the existing Cloud Run service and Cloud Run Job modules.
 
-This document describes the part 1 contract and the boundary that part 2 will consume.
+The completed contract keeps the VPC lifecycle separate from Cloud Run while exposing a small typed object that roots can pass directly into either workload module.
 
 ## VPC and workload subnet
 
@@ -46,13 +46,7 @@ The allocated range is supplied as an explicit IPv4 CIDR. This keeps address pla
 
 For this blueprint, the accepted prefix range is `/8` through `/24`. The upper bound matches Memorystore for Redis Private Service Access guidance, which requires `/24` or a larger block when establishing the allocated range.
 
-The caller must ensure that the Private Service Access allocation does not overlap:
-
-- workload subnets;
-- other allocated service ranges;
-- VPC peering ranges;
-- VPN or Interconnect routes;
-- on-premises networks that may become reachable later.
+The caller must ensure that the Private Service Access allocation does not overlap workload subnets, other allocated service ranges, VPC peering ranges, VPN/Interconnect routes, or on-premises networks that may become reachable later.
 
 ## Service Networking lifecycle
 
@@ -71,33 +65,81 @@ The module does not enable project APIs. Before apply, roots must ensure these A
 
 API enablement has a project-wide lifecycle and may be shared by multiple modules. Keeping it outside this child module avoids accidental API disablement or ownership conflicts during module removal.
 
-## Direct VPC egress boundary
+## Direct VPC egress
 
-Cloud Run Direct VPC egress does not require a Serverless VPC Access connector. Cloud Run v2 supports a `vpc_access.network_interfaces` block containing a network and subnetwork, with an optional egress mode.
-
-Part 1 exposes the future workload contract as:
+Cloud Run Direct VPC egress does not require a Serverless VPC Access connector. Both `modules/cloud-run-service` and `modules/cloud-run-job` now accept the same optional `direct_vpc` object:
 
 ```hcl
-output "direct_vpc" {
-  value = {
-    network    = google_compute_network.this.name
-    subnetwork = google_compute_subnetwork.this.name
-  }
+direct_vpc = {
+  network    = "blueprint-vpc"
+  subnetwork = "blueprint-us-central1"
+  egress     = "PRIVATE_RANGES_ONLY"
+  tags       = ["serverless"]
 }
 ```
 
-Part 2 will add an optional Direct VPC input to both `modules/cloud-run-service` and `modules/cloud-run-job`. Workloads that do not configure it will remain network-agnostic.
+The network module exposes a directly composable baseline:
+
+```hcl
+direct_vpc = module.network.direct_vpc
+```
+
+That output contains only `network` and `subnetwork`; the Cloud Run modules supply the safe egress default and empty tag set.
+
+### Defaults and routing semantics
+
+`direct_vpc = null` is the default for both workload modules. In that state no `vpc_access` block is rendered, preserving the behavior of existing callers.
+
+When Direct VPC is enabled:
+
+- `network` and `subnetwork` are required and must be non-empty;
+- `egress` defaults to `PRIVATE_RANGES_ONLY`;
+- callers may explicitly choose `ALL_TRAFFIC`;
+- optional network tags are validated before reaching the provider;
+- no Serverless VPC Access connector is created or accepted by this contract.
+
+`PRIVATE_RANGES_ONLY` is the reference-architecture default because private dependencies such as Memorystore can use the VPC while ordinary public internet traffic keeps the platform's normal path. `ALL_TRAFFIC` is an explicit environment decision and may require Cloud NAT or another routed internet-egress design; this repository does not create those resources implicitly.
+
+### Region ownership
+
+The Cloud Run service/job location and the subnet region remain independent inputs. Environment roots are responsible for composing a subnet that is valid for the target Cloud Run workload. The network module exposes `subnet_region` so roots can validate or document that policy without the child modules reaching into one another.
+
+## Composition
+
+A root can compose the capabilities without hidden dependencies:
+
+```hcl
+module "network" {
+  source = "../../modules/vpc-network"
+
+  # ...
+}
+
+module "api" {
+  source = "../../modules/cloud-run-service"
+
+  # ...
+  direct_vpc = module.network.direct_vpc
+}
+
+module "batch" {
+  source = "../../modules/cloud-run-job"
+
+  # ...
+  direct_vpc = module.network.direct_vpc
+}
+```
+
+Terraform infers the network-before-workload dependency through these values. No explicit `depends_on` is necessary.
 
 ## Deliberate exclusions
 
-The networking foundation does not create:
+The networking capability does not create:
 
 - Serverless VPC Access connectors;
 - Cloud NAT or Cloud Router;
-- internet-egress policy;
 - workload firewall rules;
 - Shared VPC host/service-project wiring;
-- Memorystore resources;
-- Cloud Run VPC configuration before issue #19 part 2.
+- Memorystore resources.
 
 Those capabilities should be added only when a concrete workload requires them, rather than broadening the network module preemptively.
