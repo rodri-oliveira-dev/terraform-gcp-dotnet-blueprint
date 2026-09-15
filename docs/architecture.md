@@ -80,6 +80,34 @@ A runtime service account is required rather than allowing Cloud Run to fall bac
 
 Secure defaults favor internal-only ingress, provider-level deletion protection, scale-to-zero, a bounded maximum instance count, and no public invocation IAM. A caller may choose broader ingress, but unauthenticated invocation requires a separate IAM decision outside this module.
 
+### Runtime identity and Secret Manager boundary
+
+`modules/runtime-identity` creates one Google service account for one workload boundary. It does not create service-account keys and does not accept arbitrary project IAM roles. The identity is passed explicitly into Cloud Run service/job modules.
+
+`modules/secret-manager` creates one Secret Manager metadata resource and optional additive IAM members. Access is granted with `roles/secretmanager.secretAccessor` on the individual secret to explicitly listed workload service accounts; no project-level accessor binding is created.
+
+Secret payload/version lifecycle is deliberately outside Terraform. The module does not create `google_secret_manager_secret_version` and has no variable for secret data. A trusted operator or delivery process creates and rotates versions independently. Terraform only carries secret identifiers and version/alias references.
+
+The intended composition is:
+
+```text
+Runtime identity
+      |
+      +--> Cloud Run service/job service_account
+      |
+      +--> roles/secretmanager.secretAccessor
+                    |
+                    v
+              Specific secret
+                    |
+                    v
+       version managed outside Terraform
+```
+
+Different workloads should use different service accounts and receive access only to the secrets they require. Referencing a secret from Cloud Run does not grant access by itself; the secret-level IAM member is a separate explicit relationship.
+
+See `docs/runtime-identities-and-secrets.md` and `examples/runtime-secrets` for the full contract.
+
 ## Delivery architecture
 
 GitHub Actions validates Terraform changes before merge. Authentication to Google Cloud uses Workload Identity Federation instead of long-lived service account keys.
@@ -141,6 +169,9 @@ See `bootstrap/state/README.md` for the bootstrap, backend migration, and recove
 - Pull-request quality gates remain credential-free.
 - Generated `gha-creds-*.json` files are ignored.
 - Runtime workload identities are explicit rather than implicit project defaults.
+- Runtime identities do not receive generic project roles from their creation module.
+- Secret payload access is granted per secret to explicitly configured workload identities.
+- Application secret payloads and Secret Manager versions are not managed by Terraform in this repository.
 - Least-privilege IAM roles wherever practical.
 - Deployment identities receive no broad project role by default.
 - Secrets are referenced from Secret Manager rather than stored in Terraform configuration.
