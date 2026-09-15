@@ -15,7 +15,7 @@ The project is intentionally focused on infrastructure architecture rather than 
 - secure-by-default IAM and secret management;
 - Cloud Run services and jobs;
 - asynchronous messaging with Pub/Sub;
-- managed caching with Memorystore for Redis;
+- private networking and managed caching with Memorystore for Redis;
 - observability and operational readiness;
 - automated validation and security checks;
 - remote state and CI/CD-friendly authentication;
@@ -39,11 +39,18 @@ flowchart TD
     Batch --> Secrets
     Batch --> Redis
 
+    API --> VPC[VPC / Direct VPC egress]
+    Worker --> VPC
+    Batch --> VPC
+    VPC --> Redis
+
     GitHub[GitHub Actions] --> WIF[Workload Identity Federation]
     WIF --> GCP[Google Cloud]
 ```
 
 Pub/Sub messages are consumed by a request-serving Cloud Run service. Cloud Run Jobs are modeled separately for finite batch or scheduled workloads and are invoked through supported execution mechanisms such as Cloud Scheduler calling the authenticated Cloud Run Admin API. Pub/Sub is therefore not modeled as directly launching a Cloud Run Job.
+
+Cloud Run workloads that need private services use Direct VPC egress. Memorystore for Redis is attached to the same VPC through Private Service Access rather than a Serverless VPC Access connector.
 
 ## Planned repository structure
 
@@ -61,6 +68,8 @@ Pub/Sub messages are consumed by a request-serving Cloud Run service. Cloud Run 
 │   ├── architecture.md
 │   ├── agent-skills.md
 │   ├── agent-workflow.md
+│   ├── memorystore-redis.md
+│   ├── networking.md
 │   ├── runtime-identities-and-secrets.md
 │   └── adr/
 ├── environments/
@@ -69,13 +78,16 @@ Pub/Sub messages are consumed by a request-serving Cloud Run service. Cloud Run 
 ├── modules/
 │   ├── cloud-run-service/
 │   ├── cloud-run-job/
-│   ├── memorystore/
+│   ├── memorystore-redis/
 │   ├── pubsub/
 │   ├── runtime-identity/
-│   └── secret-manager/
+│   ├── secret-manager/
+│   └── vpc-network/
 ├── examples/
 │   ├── cloud-run-service/
-│   └── runtime-secrets/
+│   ├── memorystore-redis/
+│   ├── runtime-secrets/
+│   └── vpc-network/
 ├── AGENTS.md
 ├── .terraform-version
 ├── .tflint.hcl
@@ -125,7 +137,7 @@ See [`bootstrap/github-actions-wif/README.md`](bootstrap/github-actions-wif/READ
 
 ## Cloud Run v2 service module
 
-`modules/cloud-run-service` manages one request-serving `google_cloud_run_v2_service` for .NET APIs or workers and exposes typed inputs for image, CPU, memory, concurrency, scaling, runtime identity, environment variables, Secret Manager references, labels, ingress, and deletion protection.
+`modules/cloud-run-service` manages one request-serving `google_cloud_run_v2_service` for .NET APIs or workers and exposes typed inputs for image, CPU, memory, concurrency, scaling, runtime identity, environment variables, Secret Manager references, labels, ingress, deletion protection, and optional Direct VPC egress.
 
 The module requires an explicit runtime service account, defaults to internal-only ingress and provider-level deletion protection, and does not create IAM bindings or secret payloads. Secret-backed environment variables contain only secret identifiers and versions.
 
@@ -139,6 +151,16 @@ Secret payloads and `google_secret_manager_secret_version` resources are intenti
 
 See [`docs/runtime-identities-and-secrets.md`](docs/runtime-identities-and-secrets.md) and [`examples/runtime-secrets/`](examples/runtime-secrets/) for identity boundaries, version ownership, and a least-privilege composition example.
 
+## Private networking and Memorystore for Redis
+
+`modules/vpc-network` creates the custom-mode VPC, workload subnet, allocated Private Service Access range, and Service Networking connection. Cloud Run service/job modules can consume its `direct_vpc` output without requiring a Serverless VPC Access connector.
+
+`modules/memorystore-redis` creates a private `google_redis_instance` attached to an explicitly supplied VPC with `PRIVATE_SERVICE_ACCESS`. The production-oriented defaults are `STANDARD_HA`, Redis 7.2, Redis AUTH enabled, TLS server authentication enabled, and deletion prevention enabled.
+
+The generated Redis AUTH string and server CA certificate payloads are deliberately excluded from module outputs. Provider-computed sensitive data may still be persisted in Terraform state, so the protected remote-state strategy remains part of the Redis security boundary.
+
+See [`docs/networking.md`](docs/networking.md), [`docs/memorystore-redis.md`](docs/memorystore-redis.md), [`examples/vpc-network/`](examples/vpc-network/), and [`examples/memorystore-redis/`](examples/memorystore-redis/) for the complete network/cache composition.
+
 ## Terraform validation pipeline
 
 Pull requests run independent quality gates for Terraform formatting, root/module validation, native Terraform tests, TFLint, and Trivy IaC security scanning. GitHub Actions are pinned to immutable commit SHAs and monitored by Dependabot for reviewed version updates.
@@ -147,7 +169,7 @@ See [`docs/terraform-ci.md`](docs/terraform-ci.md) for discovery rules, testing 
 
 ## Roadmap
 
-The implementation will evolve incrementally:
+The implementation evolves incrementally:
 
 1. Terraform foundation and repository conventions.
 2. Remote state bootstrap on Cloud Storage.
@@ -156,9 +178,9 @@ The implementation will evolve incrementally:
 5. Cloud Run v2 service module for .NET APIs and request-serving workers.
 6. Pub/Sub worker-service integration plus Cloud Run Job support for scheduled/batch processing.
 7. Workload-specific runtime identities and Secret Manager integration.
-8. Observability, environment composition and production-readiness documentation.
-
-Private networking, Direct VPC egress, and Memorystore are intentionally being separated from the identity/secret capability and will be added as focused follow-up work before the complete environment composition is considered finished.
+8. Private VPC networking and Direct VPC egress.
+9. Secure Memorystore for Redis integration.
+10. Observability, environment composition and production-readiness documentation.
 
 ## Current toolchain
 
