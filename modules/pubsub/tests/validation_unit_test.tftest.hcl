@@ -77,6 +77,54 @@ run "reject_reserved_topic_prefix" {
   ]
 }
 
+run "reject_non_ascii_filter" {
+  command = plan
+
+  variables {
+    filter = "attributes.kind = \"ação\""
+  }
+
+  expect_failures = [
+    var.filter,
+  ]
+}
+
+run "reject_filter_over_256_bytes" {
+  command = plan
+
+  variables {
+    filter = join("", [for i in range(257) : "a"])
+  }
+
+  expect_failures = [
+    var.filter,
+  ]
+}
+
+run "reject_generated_dead_letter_topic_name_over_255_characters" {
+  command = plan
+
+  variables {
+    topic_name = join("", concat(["a"], [for i in range(243) : "b"]))
+  }
+
+  expect_failures = [
+    google_pubsub_subscription.primary,
+  ]
+}
+
+run "reject_generated_dead_letter_subscription_name_over_255_characters" {
+  command = plan
+
+  variables {
+    subscription_name = join("", concat(["a"], [for i in range(243) : "b"]))
+  }
+
+  expect_failures = [
+    google_pubsub_subscription.primary,
+  ]
+}
+
 run "reject_non_https_push_endpoint" {
   command = plan
 
