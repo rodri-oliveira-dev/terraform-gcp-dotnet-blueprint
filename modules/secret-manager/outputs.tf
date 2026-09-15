@@ -16,7 +16,7 @@ output "secret_reference" {
   }
 }
 
-output "accessor_service_account_emails" {
-  description = "Service account emails granted Secret Manager Secret Accessor on this secret."
-  value       = var.accessor_service_account_emails
+output "accessor_service_accounts" {
+  description = "Stable caller-chosen accessor IDs mapped to service account emails granted Secret Manager Secret Accessor on this secret."
+  value       = var.accessor_service_accounts
 }
