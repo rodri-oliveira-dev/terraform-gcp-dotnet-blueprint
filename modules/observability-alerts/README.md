@@ -87,4 +87,11 @@ Alert policies use `deletion_policy = "DELETE"`. They are operational configurat
 
 Native Terraform tests use the mocked Google provider and plan mode. They verify target selection, metric/filter contracts, defaults, channel wiring, and input validation without Google Cloud credentials or billable resources.
 
-Part 2 of issue #24 will attach this module to `environments/dev` and `environments/prod`, then add the environment-level observability documentation, logging expectations, SLI/SLO guidance, and only dashboards that provide durable operator value.
+## Environment composition and operating guidance
+
+The module is already attached to both production roots:
+
+- `environments/dev/observability.tf` applies development-oriented thresholds and optional notification channels;
+- `environments/prod/observability.tf` applies production-oriented thresholds and optional notification channels.
+
+See [`docs/observability.md`](../../docs/observability.md) for the completed operating guidance, including structured logging expectations, telemetry ownership, SLI/SLO selection, error budgets, and the dashboard policy used by this blueprint.
