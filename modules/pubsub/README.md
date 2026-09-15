@@ -11,6 +11,8 @@ The module is transport-focused. It does not create Cloud Run services, applicat
 
 For the reference architecture, authenticated push targets a request-serving Cloud Run service. Pub/Sub is never modeled as directly executing a Cloud Run Job.
 
+When payload unwrapping is enabled through `no_wrapper = true`, callers may also enable `write_metadata = true` to expose Pub/Sub metadata as request headers. The module rejects `write_metadata = true` when `no_wrapper = false`, because Pub/Sub only applies the metadata option inside the payload-unwrapping configuration.
+
 ## Reliability defaults
 
 - acknowledgement deadline: 60 seconds;
@@ -99,7 +101,7 @@ See `examples/pubsub-worker` for composition with `modules/cloud-run-service` an
 | `filter` | `null` | Optional printable-ASCII subscription filter, maximum 256 bytes. |
 | `retry_policy` | `10..600s` | Minimum and maximum redelivery backoff. |
 | `dead_letter` | enabled | DLQ names, inspection subscription, and max attempts. Derived names are validated against Pub/Sub's 255-character limit. |
-| `push_config` | `null` | HTTPS endpoint, push-auth service account, optional audience and payload-unwrapping settings. |
+| `push_config` | `null` | HTTPS endpoint, push-auth service account, optional audience and payload-unwrapping settings. `write_metadata = true` requires `no_wrapper = true`. |
 | `manage_service_agent_iam` | `true` | Manage narrowly scoped IAM required by Pub/Sub transport. |
 | `labels` | `{}` | Labels applied to Pub/Sub resources. |
 
