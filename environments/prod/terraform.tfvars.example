@@ -1,0 +1,24 @@
+project_id = "replace-with-your-production-project-id"
+region     = "us-central1"
+
+application_name = "blueprint"
+
+# Prefer immutable image digests or explicitly reviewed release tags in production.
+api_image    = "us-docker.pkg.dev/PROJECT/containers/api:prod"
+worker_image = "us-docker.pkg.dev/PROJECT/containers/worker:prod"
+batch_image  = "us-docker.pkg.dev/PROJECT/containers/batch:prod"
+
+# Phase 1: keep false while the network/cache/identities/secret metadata are
+# created and the required Secret Manager versions are populated externally.
+enable_workloads = false
+
+subnet_ip_cidr_range        = "10.60.0.0/24"
+private_service_access_cidr = "10.70.0.0/16"
+redis_memory_size_gb        = 5
+
+scheduler_schedule  = "0 2 * * *"
+scheduler_time_zone = "America/Sao_Paulo"
+
+labels = {
+  owner = "platform"
+}
