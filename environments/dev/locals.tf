@@ -17,6 +17,7 @@ locals {
     "compute.googleapis.com",
     "iam.googleapis.com",
     "iamcredentials.googleapis.com",
+    "monitoring.googleapis.com",
     "pubsub.googleapis.com",
     "redis.googleapis.com",
     "run.googleapis.com",

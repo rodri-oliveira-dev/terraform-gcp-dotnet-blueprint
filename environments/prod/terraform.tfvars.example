@@ -21,6 +21,17 @@ redis_memory_size_gb        = 5
 scheduler_schedule  = "0 2 * * *"
 scheduler_time_zone = "America/Sao_Paulo"
 
+# Provide pre-existing Cloud Monitoring notification channels for production.
+# The channel destinations themselves remain in an organization-owned state.
+observability_notification_channels = []
+
+observability_thresholds = {
+  cloud_run_server_error_ratio      = 0.05
+  pubsub_oldest_unacked_age_seconds = 300
+  redis_memory_usage_ratio          = 0.80
+  redis_system_memory_usage_ratio   = 0.80
+}
+
 labels = {
   owner = "platform"
 }

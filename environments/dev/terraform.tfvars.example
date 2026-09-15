@@ -20,6 +20,18 @@ private_service_access_cidr = "10.50.0.0/16"
 scheduler_schedule  = "0 2 * * *"
 scheduler_time_zone = "America/Sao_Paulo"
 
+# Optional existing notification channels. Channel resources and destinations
+# are intentionally managed outside this environment root.
+observability_notification_channels = []
+
+# Development keeps the same signals as production with more tolerant defaults.
+observability_thresholds = {
+  cloud_run_server_error_ratio      = 0.10
+  pubsub_oldest_unacked_age_seconds = 600
+  redis_memory_usage_ratio          = 0.90
+  redis_system_memory_usage_ratio   = 0.90
+}
+
 labels = {
   owner = "platform"
 }

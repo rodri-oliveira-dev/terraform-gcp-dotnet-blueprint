@@ -78,3 +78,8 @@ output "batch_scheduler_name" {
   description = "Cloud Scheduler job name when workloads are enabled."
   value       = var.enable_workloads ? google_cloud_scheduler_job.batch[0].name : null
 }
+
+output "observability_alert_policy_ids" {
+  description = "Production Cloud Monitoring alert policy IDs when workloads and observability are active."
+  value       = var.enable_workloads ? module.observability[0].alert_policy_ids : null
+}
