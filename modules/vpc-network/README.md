@@ -51,7 +51,25 @@ module "network" {
 }
 ```
 
-The `direct_vpc` output exposes the network and subnet names that part 2 of issue #19 will wire into the optional `vpc_access.network_interfaces` blocks of the Cloud Run service and job modules.
+The `direct_vpc` output exposes exactly the network and subnet names expected by the optional `direct_vpc` inputs of both Cloud Run modules:
+
+```hcl
+module "api" {
+  source = "../../modules/cloud-run-service"
+
+  # ...
+  direct_vpc = module.network.direct_vpc
+}
+
+module "batch" {
+  source = "../../modules/cloud-run-job"
+
+  # ...
+  direct_vpc = module.network.direct_vpc
+}
+```
+
+The workload modules default that connection to `PRIVATE_RANGES_ONLY` and no network tags. This module remains responsible only for the VPC/subnet lifecycle.
 
 ## Inputs
 
@@ -85,7 +103,7 @@ terraform test
 
 ## Out of scope
 
-- Direct VPC egress configuration on Cloud Run workloads (issue #19 part 2);
+- Cloud Run workload lifecycle beyond the typed `direct_vpc` output contract;
 - Serverless VPC Access connectors;
 - Memorystore/Redis resources;
 - Cloud NAT or Cloud Router;
