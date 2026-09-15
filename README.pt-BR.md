@@ -1,5 +1,15 @@
 # Terraform GCP .NET Blueprint
 
+[English](README.md) | **Português**
+
+[![Terraform CI](https://github.com/rodri-oliveira-dev/terraform-gcp-dotnet-blueprint/actions/workflows/terraform-ci.yml/badge.svg)](https://github.com/rodri-oliveira-dev/terraform-gcp-dotnet-blueprint/actions/workflows/terraform-ci.yml)
+[![Deployment Workflow Checks](https://github.com/rodri-oliveira-dev/terraform-gcp-dotnet-blueprint/actions/workflows/deployment-workflow-checks.yml/badge.svg)](https://github.com/rodri-oliveira-dev/terraform-gcp-dotnet-blueprint/actions/workflows/deployment-workflow-checks.yml)
+[![Terraform](https://img.shields.io/badge/Terraform-1.16.2-844FBA?logo=terraform&logoColor=white)](https://developer.hashicorp.com/terraform)
+[![Google Cloud](https://img.shields.io/badge/Google%20Cloud-Blueprint-4285F4?logo=googlecloud&logoColor=white)](https://cloud.google.com/)
+[![.NET](https://img.shields.io/badge/.NET-10.0-512BD4?logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/)
+[![IaC Security](https://img.shields.io/badge/IaC%20Security-Trivy-1904DA?logo=trivy&logoColor=white)](https://trivy.dev/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 Arquitetura de referência Terraform orientada a produção para executar workloads .NET no Google Cloud, com padrões seguros, módulos reutilizáveis, roots `dev`/`prod` isolados, entrega sem chaves, rede privada, mensageria, cache e observabilidade operacional.
 
 > **Status:** A arquitetura e as capacidades do repositório estão completas para o baseline v1.0. O repositório é um blueprint de referência, não uma configuração universal de produção. As evidências de validação em GCP real são acompanhadas separadamente na issue #29 e não devem ser inferidas apenas a partir do CI offline.
@@ -85,7 +95,7 @@ flowchart TB
 
 A API não é tornada pública por padrão. O Pub/Sub direciona mensagens a um worker Cloud Run orientado a requisições; ele **não** executa diretamente o Cloud Run Job. A execução de batch agendada usa o Cloud Scheduler contra a Cloud Run Admin API autenticada.
 
-Consulte [`docs/architecture.md`](docs/architecture.md) para os limites e a justificativa das decisões de design.
+Consulte [`docs/architecture.pt-BR.md`](docs/architecture.pt-BR.md) para os limites e a justificativa das decisões de design.
 
 ## Estrutura do repositório
 
@@ -130,7 +140,7 @@ As operações autenticadas são explícitas e manuais:
 5. O `Terraform apply` exige confirmação explícita, bloqueia mudanças destrutivas por padrão e usa a proteção de GitHub Environment para o ambiente selecionado.
 6. O job de apply refaz o plan após a aprovação e exige que o fingerprint do plano permaneça idêntico antes de qualquer mutação.
 
-Consulte [`docs/terraform-deployment.md`](docs/terraform-deployment.md) e [`docs/gcp-integration-validation.md`](docs/gcp-integration-validation.md).
+Consulte [`docs/terraform-deployment.pt-BR.md`](docs/terraform-deployment.pt-BR.md) e [`docs/gcp-integration-validation.pt-BR.md`](docs/gcp-integration-validation.pt-BR.md).
 
 ## Ciclo de vida dos ambientes
 
@@ -152,7 +162,7 @@ políticas de observabilidade + ajustes operacionais
 
 A flag de ativação é deliberadamente unidirecional depois de aplicada como `true`; revertê-la para `false` é bloqueado antes que uma remoção parcial possa ocorrer.
 
-Consulte [`docs/environments.md`](docs/environments.md) para a matriz `dev`/`prod` e [`docs/production-readiness.md`](docs/production-readiness.md) para o procedimento completo de adoção.
+Consulte [`docs/environments.pt-BR.md`](docs/environments.pt-BR.md) para a matriz `dev`/`prod` e [`docs/production-readiness.pt-BR.md`](docs/production-readiness.pt-BR.md) para o procedimento completo de adoção.
 
 ## Limites de segurança
 
@@ -182,7 +192,7 @@ Os roots dos ambientes compõem `modules/observability-alerts` quando os workloa
 
 Os destinos de notificação são injetados como nomes de recursos de canais existentes do Cloud Monitoring e permanecem fora deste state. A semântica de logging/tracing da aplicação continua sendo responsabilidade da aplicação.
 
-Consulte [`docs/observability.md`](docs/observability.md).
+Consulte [`docs/observability.pt-BR.md`](docs/observability.pt-BR.md).
 
 ## Prontidão para produção
 
@@ -197,7 +207,7 @@ O repositório contém um guia consolidado para operadores cobrindo:
 - checklist de adoção;
 - checklist de prontidão da release `v1.0.0`.
 
-Comece por [`docs/production-readiness.md`](docs/production-readiness.md) e [`docs/troubleshooting.md`](docs/troubleshooting.md).
+Comece por [`docs/production-readiness.pt-BR.md`](docs/production-readiness.pt-BR.md) e [`docs/troubleshooting.pt-BR.md`](docs/troubleshooting.pt-BR.md).
 
 ## Status e limites da validação
 
@@ -217,7 +227,7 @@ Um plan bem-sucedido **não** comprova que os workloads iniciam corretamente, qu
 
 ## Release
 
-O primeiro baseline estável está preparado como `v1.0.0`, mas este repositório não cria tag nem GitHub Release automaticamente. Revise [`CHANGELOG.md`](CHANGELOG.md), [`docs/releases/v1.0.0.md`](docs/releases/v1.0.0.md), o checklist de prontidão da release, o CI atual e as evidências da issue #29 antes de publicar.
+O primeiro baseline estável está preparado como `v1.0.0`, mas este repositório não cria tag nem GitHub Release automaticamente. Revise [`CHANGELOG.pt-BR.md`](CHANGELOG.pt-BR.md), [`docs/releases/v1.0.0.pt-BR.md`](docs/releases/v1.0.0.pt-BR.md), o checklist de prontidão da release, o CI atual e as evidências da issue #29 antes de publicar.
 
 ## Licença
 
