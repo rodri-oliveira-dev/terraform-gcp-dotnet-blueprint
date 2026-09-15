@@ -70,6 +70,18 @@ run "reject_workload_subnet_smaller_than_platform_minimum" {
   ]
 }
 
+run "reject_noncanonical_workload_subnet" {
+  command = plan
+
+  variables {
+    subnet_ip_cidr_range = "10.20.0.7/24"
+  }
+
+  expect_failures = [
+    var.subnet_ip_cidr_range,
+  ]
+}
+
 run "reject_ipv6_private_service_access_range" {
   command = plan
 
@@ -87,6 +99,18 @@ run "reject_private_service_access_range_smaller_than_memorystore_guidance" {
 
   variables {
     private_service_access_cidr = "10.30.0.0/25"
+  }
+
+  expect_failures = [
+    var.private_service_access_cidr,
+  ]
+}
+
+run "reject_noncanonical_private_service_access_range" {
+  command = plan
+
+  variables {
+    private_service_access_cidr = "10.30.1.9/16"
   }
 
   expect_failures = [
