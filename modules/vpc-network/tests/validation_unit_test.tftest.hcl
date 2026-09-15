@@ -118,6 +118,32 @@ run "reject_noncanonical_private_service_access_range" {
   ]
 }
 
+run "reject_private_service_access_inside_workload_subnet" {
+  command = plan
+
+  variables {
+    subnet_ip_cidr_range        = "10.20.0.0/16"
+    private_service_access_cidr = "10.20.1.0/24"
+  }
+
+  expect_failures = [
+    google_compute_global_address.private_service_access,
+  ]
+}
+
+run "reject_workload_subnet_inside_private_service_access" {
+  command = plan
+
+  variables {
+    subnet_ip_cidr_range        = "10.20.1.0/24"
+    private_service_access_cidr = "10.20.0.0/16"
+  }
+
+  expect_failures = [
+    google_compute_global_address.private_service_access,
+  ]
+}
+
 run "reject_unsafe_service_networking_deletion_policy" {
   command = plan
 
