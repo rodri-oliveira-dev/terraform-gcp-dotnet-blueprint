@@ -47,18 +47,18 @@ Third-party GitHub Actions are pinned to immutable commit SHAs, with the corresp
 
 ## Dependency updates
 
-`.github/dependabot.yml` enables Dependabot version updates for GitHub Actions.
+`.github/dependabot.yml` enables Dependabot version updates for GitHub Actions **and Terraform dependencies**. The detailed policy is documented in `docs/dependency-updates.md`.
 
 The configuration is intentionally conservative:
 
-- checks run weekly on Monday at 09:00 in `America/Sao_Paulo`;
-- minor and patch Action updates are grouped into a single pull request to reduce review noise;
-- major Action updates remain separate so breaking changes receive focused review;
-- no more than five Dependabot version-update pull requests may remain open at once;
-- Dependabot pull requests use the `chore(deps)` commit-message prefix;
-- Actions remain pinned to immutable commit SHAs, with release tags kept as same-line comments so Dependabot can update the SHA and its version annotation together.
+- checks run weekly in `America/Sao_Paulo`;
+- minor and patch updates may be grouped by ecosystem to reduce pull-request noise;
+- major updates remain separate so breaking changes receive focused review;
+- Dependabot pull requests pass through the same five offline, credential-free quality gates;
+- executable roots keep deterministic, committed `.terraform.lock.hcl` files;
+- reusable child modules do not require their own lock files.
 
-The Terraform Dependabot ecosystem is intentionally not enabled while this repository targets Terraform 1.16.x because GitHub currently documents Terraform ecosystem support only through Terraform 1.15.x. Provider updates therefore remain explicit changes reviewed through each root's `.terraform.lock.hcl` until official support catches up or the repository adopts another dependency-update mechanism.
+Automated updates are change proposals, not evidence that a change is safe to merge. Major provider or module updates require explicit review of schemas, defaults, APIs, permissions, and state effects.
 
 ## Local validation
 
@@ -125,5 +125,6 @@ trivy config --severity HIGH,CRITICAL --exit-code 1 .
 - Terraform provider selections are pinned by each root's `.terraform.lock.hcl`.
 - TFLint plugins are pinned in `.tflint.hcl`.
 - GitHub Actions are pinned to immutable commit SHAs and monitored by Dependabot.
+- Dependabot also monitors Terraform providers and modules as documented in `docs/dependency-updates.md`.
 
 Version upgrades should be explicit repository changes so CI behavior does not drift without review.

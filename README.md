@@ -1,5 +1,15 @@
 # Terraform GCP .NET Blueprint
 
+**English** | [Português](README.pt-BR.md)
+
+[![Terraform CI](https://github.com/rodri-oliveira-dev/terraform-gcp-dotnet-blueprint/actions/workflows/terraform-ci.yml/badge.svg)](https://github.com/rodri-oliveira-dev/terraform-gcp-dotnet-blueprint/actions/workflows/terraform-ci.yml)
+[![Deployment Workflow Checks](https://github.com/rodri-oliveira-dev/terraform-gcp-dotnet-blueprint/actions/workflows/deployment-workflow-checks.yml/badge.svg)](https://github.com/rodri-oliveira-dev/terraform-gcp-dotnet-blueprint/actions/workflows/deployment-workflow-checks.yml)
+[![Terraform](https://img.shields.io/badge/Terraform-1.16.2-844FBA?logo=terraform&logoColor=white)](https://developer.hashicorp.com/terraform)
+[![Google Cloud](https://img.shields.io/badge/Google%20Cloud-Blueprint-4285F4?logo=googlecloud&logoColor=white)](https://cloud.google.com/)
+[![.NET](https://img.shields.io/badge/.NET-10.0-512BD4?logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/)
+[![IaC Security](https://img.shields.io/badge/IaC%20Security-Trivy-1904DA?logo=trivy&logoColor=white)](https://trivy.dev/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 Production-oriented Terraform reference architecture for running .NET workloads on Google Cloud with secure defaults, reusable modules, isolated `dev`/`prod` roots, keyless delivery, private networking, messaging, caching and operational observability.
 
 > **Status:** Architecture and repository capabilities are complete for the v1.0 baseline. The repository is a reference blueprint, not a universal production configuration. Real-GCP validation evidence is tracked separately in issue #29 and must not be inferred from offline CI alone.
