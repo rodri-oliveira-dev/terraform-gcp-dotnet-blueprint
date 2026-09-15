@@ -61,6 +61,7 @@ Pub/Sub messages are consumed by a request-serving Cloud Run service. Cloud Run 
 │   ├── architecture.md
 │   ├── agent-skills.md
 │   ├── agent-workflow.md
+│   ├── runtime-identities-and-secrets.md
 │   └── adr/
 ├── environments/
 │   ├── dev/
@@ -68,12 +69,13 @@ Pub/Sub messages are consumed by a request-serving Cloud Run service. Cloud Run 
 ├── modules/
 │   ├── cloud-run-service/
 │   ├── cloud-run-job/
-│   ├── iam/
 │   ├── memorystore/
 │   ├── pubsub/
+│   ├── runtime-identity/
 │   └── secret-manager/
 ├── examples/
-│   └── cloud-run-service/
+│   ├── cloud-run-service/
+│   └── runtime-secrets/
 ├── AGENTS.md
 ├── .terraform-version
 ├── .tflint.hcl
@@ -123,11 +125,19 @@ See [`bootstrap/github-actions-wif/README.md`](bootstrap/github-actions-wif/READ
 
 ## Cloud Run v2 service module
 
-`modules/cloud-run-service` is the first workload child module. It manages one request-serving `google_cloud_run_v2_service` for .NET APIs or workers and exposes typed inputs for image, CPU, memory, concurrency, scaling, runtime identity, environment variables, Secret Manager references, labels, ingress, and deletion protection.
+`modules/cloud-run-service` manages one request-serving `google_cloud_run_v2_service` for .NET APIs or workers and exposes typed inputs for image, CPU, memory, concurrency, scaling, runtime identity, environment variables, Secret Manager references, labels, ingress, and deletion protection.
 
-The module requires an explicit runtime service account, defaults to internal-only ingress and provider-level deletion protection, and does not create IAM bindings or secret payloads. Secret-backed environment variables contain only secret identifiers and versions; access grants remain the responsibility of later IAM/Secret Manager composition.
+The module requires an explicit runtime service account, defaults to internal-only ingress and provider-level deletion protection, and does not create IAM bindings or secret payloads. Secret-backed environment variables contain only secret identifiers and versions.
 
 Native Terraform tests use a mocked Google provider and plan mode, so module defaults and validation can be exercised in pull requests without Google Cloud credentials or billable resources. See [`modules/cloud-run-service/README.md`](modules/cloud-run-service/README.md) and [`examples/cloud-run-service/`](examples/cloud-run-service/) for the contract and isolated usage example.
+
+## Runtime identities and Secret Manager
+
+`modules/runtime-identity` creates one keyless service account per workload boundary without granting generic project roles. `modules/secret-manager` manages secret metadata and additive `roles/secretmanager.secretAccessor` members at the individual-secret level.
+
+Secret payloads and `google_secret_manager_secret_version` resources are intentionally excluded. A trusted operator or delivery process owns version creation and rotation, while Terraform exposes only `{ secret, version }` references that plug directly into the existing Cloud Run service/job inputs.
+
+See [`docs/runtime-identities-and-secrets.md`](docs/runtime-identities-and-secrets.md) and [`examples/runtime-secrets/`](examples/runtime-secrets/) for identity boundaries, version ownership, and a least-privilege composition example.
 
 ## Terraform validation pipeline
 
@@ -145,8 +155,10 @@ The implementation will evolve incrementally:
 4. GitHub Actions authentication through Workload Identity Federation.
 5. Cloud Run v2 service module for .NET APIs and request-serving workers.
 6. Pub/Sub worker-service integration plus Cloud Run Job support for scheduled/batch processing.
-7. Secret Manager, least-privilege IAM and Memorystore for Redis.
+7. Workload-specific runtime identities and Secret Manager integration.
 8. Observability, environment composition and production-readiness documentation.
+
+Private networking, Direct VPC egress, and Memorystore are intentionally being separated from the identity/secret capability and will be added as focused follow-up work before the complete environment composition is considered finished.
 
 ## Current toolchain
 
