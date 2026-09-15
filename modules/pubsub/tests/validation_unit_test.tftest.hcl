@@ -140,6 +140,23 @@ run "reject_non_https_push_endpoint" {
   ]
 }
 
+run "reject_metadata_without_payload_unwrapping" {
+  command = plan
+
+  variables {
+    push_config = {
+      endpoint              = "https://orders-worker-abc.run.app/"
+      service_account_email = "orders-push@example-project.iam.gserviceaccount.com"
+      no_wrapper            = false
+      write_metadata        = true
+    }
+  }
+
+  expect_failures = [
+    var.push_config,
+  ]
+}
+
 run "reject_cross_project_push_identity" {
   command = plan
 
