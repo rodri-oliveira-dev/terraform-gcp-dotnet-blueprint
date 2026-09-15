@@ -120,10 +120,10 @@ variable "enabled" {
 
 variable "thresholds" {
   type = object({
-    cloud_run_server_error_ratio          = optional(number, 0.05)
-    pubsub_oldest_unacked_age_seconds     = optional(number, 300)
-    redis_memory_usage_ratio              = optional(number, 0.80)
-    redis_system_memory_usage_ratio       = optional(number, 0.80)
+    cloud_run_server_error_ratio      = optional(number, 0.05)
+    pubsub_oldest_unacked_age_seconds = optional(number, 300)
+    redis_memory_usage_ratio          = optional(number, 0.80)
+    redis_system_memory_usage_ratio   = optional(number, 0.80)
   })
   description = "Portable alert thresholds. Defaults favor actionable infrastructure signals rather than workload-specific SLO targets."
   default     = {}
