@@ -1,0 +1,118 @@
+name: Deployment workflow checks
+
+on:
+  pull_request:
+    paths:
+      - ".github/scripts/terraform-*.sh"
+      - ".github/workflows/terraform-plan.yml"
+      - ".github/workflows/terraform-apply.yml"
+      - ".github/workflows/deployment-workflow-checks.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/scripts/terraform-*.sh"
+      - ".github/workflows/terraform-plan.yml"
+      - ".github/workflows/terraform-apply.yml"
+      - ".github/workflows/deployment-workflow-checks.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  scripts:
+    name: Validate deployment scripts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check Bash syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n .github/scripts/terraform-deployment-env.sh
+          bash -n .github/scripts/terraform-plan-summary.sh
+
+      - name: Test development environment mapping
+        shell: bash
+        run: |
+          set -euo pipefail
+          output_file="$(mktemp)"
+          trap 'rm -f "$output_file"' EXIT
+
+          GITHUB_ENV="$output_file" \
+          TARGET_ENVIRONMENT="dev" \
+          GCP_WORKLOAD_IDENTITY_PROVIDER="projects/123/locations/global/workloadIdentityPools/github/providers/github" \
+          GCP_SERVICE_ACCOUNT="deployer@example-project.iam.gserviceaccount.com" \
+          GCP_TERRAFORM_STATE_BUCKET="example-state" \
+          GCP_DEV_PROJECT_ID="example-dev" \
+          GCP_PROD_PROJECT_ID="example-prod" \
+          TF_DEV_API_IMAGE="example/api:dev" \
+          TF_DEV_WORKER_IMAGE="example/worker:dev" \
+          TF_DEV_BATCH_IMAGE="example/batch:dev" \
+          TF_DEV_ENABLE_WORKLOADS="false" \
+          TF_PROD_API_IMAGE="example/api:prod" \
+          TF_PROD_WORKER_IMAGE="example/worker:prod" \
+          TF_PROD_BATCH_IMAGE="example/batch:prod" \
+          TF_PROD_ENABLE_WORKLOADS="true" \
+          bash .github/scripts/terraform-deployment-env.sh >/dev/null
+
+          grep -Fxq 'TF_ROOT=environments/dev' "$output_file"
+          grep -Fxq 'GCP_PROJECT_ID=example-dev' "$output_file"
+          grep -Fxq 'TF_VAR_api_image=example/api:dev' "$output_file"
+          grep -Fxq 'TF_VAR_enable_workloads=false' "$output_file"
+
+      - name: Test production environment mapping
+        shell: bash
+        run: |
+          set -euo pipefail
+          output_file="$(mktemp)"
+          trap 'rm -f "$output_file"' EXIT
+
+          GITHUB_ENV="$output_file" \
+          TARGET_ENVIRONMENT="prod" \
+          GCP_WORKLOAD_IDENTITY_PROVIDER="projects/123/locations/global/workloadIdentityPools/github/providers/github" \
+          GCP_SERVICE_ACCOUNT="deployer@example-project.iam.gserviceaccount.com" \
+          GCP_TERRAFORM_STATE_BUCKET="example-state" \
+          GCP_DEV_PROJECT_ID="example-dev" \
+          GCP_PROD_PROJECT_ID="example-prod" \
+          TF_DEV_API_IMAGE="example/api:dev" \
+          TF_DEV_WORKER_IMAGE="example/worker:dev" \
+          TF_DEV_BATCH_IMAGE="example/batch:dev" \
+          TF_DEV_ENABLE_WORKLOADS="false" \
+          TF_PROD_API_IMAGE="example/api:prod" \
+          TF_PROD_WORKER_IMAGE="example/worker:prod" \
+          TF_PROD_BATCH_IMAGE="example/batch:prod" \
+          TF_PROD_ENABLE_WORKLOADS="true" \
+          bash .github/scripts/terraform-deployment-env.sh >/dev/null
+
+          grep -Fxq 'TF_ROOT=environments/prod' "$output_file"
+          grep -Fxq 'GCP_PROJECT_ID=example-prod' "$output_file"
+          grep -Fxq 'TF_VAR_worker_image=example/worker:prod' "$output_file"
+          grep -Fxq 'TF_VAR_enable_workloads=true' "$output_file"
+
+      - name: Verify unsafe workload fallback is rejected
+        shell: bash
+        run: |
+          set -euo pipefail
+          output_file="$(mktemp)"
+          trap 'rm -f "$output_file"' EXIT
+
+          if GITHUB_ENV="$output_file" \
+            TARGET_ENVIRONMENT="prod" \
+            GCP_WORKLOAD_IDENTITY_PROVIDER="provider" \
+            GCP_SERVICE_ACCOUNT="deployer@example-project.iam.gserviceaccount.com" \
+            GCP_TERRAFORM_STATE_BUCKET="example-state" \
+            GCP_PROD_PROJECT_ID="example-prod" \
+            TF_PROD_API_IMAGE="example/api:prod" \
+            TF_PROD_WORKER_IMAGE="example/worker:prod" \
+            TF_PROD_BATCH_IMAGE="example/batch:prod" \
+            TF_PROD_ENABLE_WORKLOADS="" \
+            bash .github/scripts/terraform-deployment-env.sh >/dev/null 2>&1; then
+            echo "::error::Missing workload activation state must be rejected."
+            exit 1
+          fi

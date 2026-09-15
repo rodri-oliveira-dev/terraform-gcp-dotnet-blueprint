@@ -5,9 +5,11 @@ project_id = "my-gcp-project"
 github_owner_id      = "3470248"
 github_repository_id = "1370437821"
 
-# Part 1 deliberately trusts only the main branch.
+# Credentialed plan/apply workflows deliberately trust only the main branch.
 github_ref = "refs/heads/main"
 
 # No project-level access is granted by default. Add only concrete roles
 # required by a deployment workflow after reviewing least-privilege needs.
+# See docs/terraform-deployment.md for the capability/permission map and
+# remember that state-bucket access should be granted at bucket scope.
 deployment_project_roles = []
