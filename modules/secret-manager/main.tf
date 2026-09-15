@@ -27,7 +27,7 @@ resource "google_secret_manager_secret" "this" {
 }
 
 resource "google_secret_manager_secret_iam_member" "accessor" {
-  for_each = var.accessor_service_account_emails
+  for_each = var.accessor_service_accounts
 
   project   = var.project_id
   secret_id = google_secret_manager_secret.this.id
