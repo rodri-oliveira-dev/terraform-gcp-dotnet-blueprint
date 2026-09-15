@@ -1,6 +1,6 @@
 # VPC network example
 
-This isolated root demonstrates the networking foundation introduced by issue #19 part 1.
+This isolated root demonstrates the networking foundation introduced by issue #19.
 
 It creates:
 
@@ -42,12 +42,39 @@ Private Service Access: 10.30.0.0/16
 
 These ranges are examples only. Real environment roots must coordinate CIDRs with existing VPCs, peering, VPN/Interconnect routes, Shared VPC policy, and other allocated ranges.
 
+## Direct VPC workload contract
+
+The root exposes `output.direct_vpc`, which can be passed directly to either Cloud Run module:
+
+```hcl
+module "api" {
+  source = "../../modules/cloud-run-service"
+
+  # ...
+  direct_vpc = module.network.direct_vpc
+}
+
+module "batch" {
+  source = "../../modules/cloud-run-job"
+
+  # ...
+  direct_vpc = module.network.direct_vpc
+}
+```
+
+The output supplies the network and subnetwork names. The workload modules default Direct VPC egress to `PRIVATE_RANGES_ONLY` and no network tags. A caller that intentionally routes all outbound traffic through the VPC can extend the object explicitly:
+
+```hcl
+direct_vpc = merge(module.network.direct_vpc, {
+  egress = "ALL_TRAFFIC"
+  tags   = ["serverless"]
+})
+```
+
+`ALL_TRAFFIC` may require Cloud NAT or another routed internet-egress design; this example does not create that infrastructure.
+
 ## Lifecycle warning
 
 The Service Networking connection defaults to `deletion_policy = "PREVENT"`. This avoids accidental removal of a private-services connection that may later be used by Memorystore or another producer service.
 
 Applying this example creates real Google Cloud networking resources. Agents and CI must not run `terraform apply` or `terraform destroy` unless explicitly authorized.
-
-## Next step
-
-Issue #19 part 2 will consume `module.network.direct_vpc` to add optional Direct VPC egress to the Cloud Run service and Cloud Run Job modules. Direct VPC egress will remain opt-in for workloads that do not need private-network access.
