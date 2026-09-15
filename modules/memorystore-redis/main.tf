@@ -14,9 +14,9 @@ resource "google_redis_instance" "this" {
   transit_encryption_mode = var.transit_encryption_mode
   location_id             = var.location_id
   alternative_location_id = var.alternative_location_id
-  redis_configs            = var.redis_configs
-  labels                   = var.labels
-  deletion_policy          = var.deletion_policy
+  redis_configs           = var.redis_configs
+  labels                  = var.labels
+  deletion_policy         = var.deletion_policy
 
   lifecycle {
     precondition {
