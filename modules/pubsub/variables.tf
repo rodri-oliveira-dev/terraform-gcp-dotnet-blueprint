@@ -177,9 +177,10 @@ variable "push_config" {
       startswith(var.push_config.endpoint, "https://") &&
       trimspace(var.push_config.service_account_email) != "" &&
       endswith(var.push_config.service_account_email, ".iam.gserviceaccount.com") &&
-      (var.push_config.audience == null || trimspace(var.push_config.audience) != "")
+      (var.push_config.audience == null || trimspace(var.push_config.audience) != "") &&
+      (!var.push_config.write_metadata || var.push_config.no_wrapper)
     )
-    error_message = "push_config requires an HTTPS endpoint, a Google service account email, and a non-empty audience when audience is provided."
+    error_message = "push_config requires an HTTPS endpoint, a Google service account email, a non-empty audience when provided, and no_wrapper = true whenever write_metadata = true."
   }
 }
 
