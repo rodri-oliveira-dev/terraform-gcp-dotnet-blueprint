@@ -36,10 +36,10 @@ run "grants_only_explicit_secret_accessors" {
   command = plan
 
   variables {
-    accessor_service_account_emails = [
-      "orders-api@example-project.iam.gserviceaccount.com",
-      "orders-worker@example-project.iam.gserviceaccount.com",
-    ]
+    accessor_service_accounts = {
+      api_runtime    = "orders-api@example-project.iam.gserviceaccount.com"
+      worker_runtime = "orders-worker@example-project.iam.gserviceaccount.com"
+    }
   }
 
   assert {
@@ -48,8 +48,13 @@ run "grants_only_explicit_secret_accessors" {
   }
 
   assert {
-    condition     = google_secret_manager_secret_iam_member.accessor["orders-api@example-project.iam.gserviceaccount.com"].role == "roles/secretmanager.secretAccessor"
+    condition     = google_secret_manager_secret_iam_member.accessor["api_runtime"].role == "roles/secretmanager.secretAccessor"
     error_message = "Accessors must receive only roles/secretmanager.secretAccessor."
+  }
+
+  assert {
+    condition     = google_secret_manager_secret_iam_member.accessor["api_runtime"].member == "serviceAccount:orders-api@example-project.iam.gserviceaccount.com"
+    error_message = "Stable accessor keys must map to the configured service account email value."
   }
 }
 
