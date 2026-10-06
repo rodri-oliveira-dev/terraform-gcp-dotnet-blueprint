@@ -20,7 +20,7 @@ env:
 jobs:
   format:
     name: Terraform format
-    runs-on: ubuntu-24.04
+    runs-on: ${{ vars.RUNNER_OS || 'ubuntu-26.04' }}
     timeout-minutes: 10
     steps:
       - name: Checkout repository
@@ -44,7 +44,7 @@ jobs:
 
   validate:
     name: Terraform validate
-    runs-on: ubuntu-24.04
+    runs-on: ${{ vars.RUNNER_OS || 'ubuntu-26.04' }}
     timeout-minutes: 15
     steps:
       - name: Checkout repository
@@ -118,7 +118,7 @@ jobs:
 
   test:
     name: Terraform test
-    runs-on: ubuntu-24.04
+    runs-on: ${{ vars.RUNNER_OS || 'ubuntu-26.04' }}
     timeout-minutes: 15
     steps:
       - name: Checkout repository
@@ -169,7 +169,7 @@ jobs:
 
   lint:
     name: TFLint
-    runs-on: ubuntu-24.04
+    runs-on: ${{ vars.RUNNER_OS || 'ubuntu-26.04' }}
     timeout-minutes: 10
     steps:
       - name: Checkout repository
@@ -193,7 +193,7 @@ jobs:
 
   security:
     name: IaC security scan
-    runs-on: ubuntu-24.04
+    runs-on: ${{ vars.RUNNER_OS || 'ubuntu-26.04' }}
     timeout-minutes: 15
     steps:
       - name: Checkout repository
